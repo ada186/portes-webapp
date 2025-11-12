@@ -250,7 +250,7 @@ with st.sidebar:
     p2 = st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1)
     p3 = st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1)
     p4 = st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1)
-    pextra = st.number_input("€ por km extra", value=PRECIO_POR_KM_EXTRA, step=1.0)
+    pextra = st.number_input("€ por km extra", value=float(PRECIO_POR_KM_EXTRA), step=0.1)
 
     st.markdown("---")
     st.subheader("Registro en CSV")
