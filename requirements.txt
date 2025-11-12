@@ -1,0 +1,8 @@
+streamlit
+requests
+folium
+polyline
+streamlit-folium
+python-dotenv
+gspread
+google-auth
