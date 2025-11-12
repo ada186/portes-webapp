@@ -10,6 +10,46 @@ from folium import Map, Marker, Circle, PolyLine, Element
 from streamlit_folium import st_folium
 import polyline as pl
 from datetime import datetime
+
+# === CONFIGURACIÓN REMOTA DESDE GOOGLE SHEETS ===
+from google.oauth2.service_account import Credentials
+import gspread
+
+def sheets_client_from_secrets():
+    """Crea un cliente de gspread usando las credenciales guardadas en Streamlit Secrets."""
+    info = dict(st.secrets["gcp_service_account"])
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.readonly",
+    ]
+    creds = Credentials.from_service_account_info(info, scopes=scopes)
+    return gspread.authorize(creds)
+
+@st.cache_data(ttl=300)
+def load_remote_config(control_sheet_id: str) -> dict:
+    """
+    Lee pares key/value de la pestaña 'config' en tu hoja de control (portes_config).
+    """
+    gc = sheets_client_from_secrets()
+    sh = gc.open_by_key(control_sheet_id)
+    try:
+        ws = sh.worksheet("config")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.get_worksheet(0)
+
+    rows = ws.get_all_values()
+    cfg = {}
+    for r in rows:
+        if len(r) >= 2 and r[0] and r[1]:
+            cfg[r[0].strip()] = r[1].strip()
+    return cfg
+# ID de tu hoja de control (lo pusiste en Secrets)
+REMOTE_CONTROL_ID = st.secrets.get("CONTROL_SHEET_ID", "")
+
+# Cargar configuración desde Google Sheets
+REMOTE_CFG = load_remote_config(REMOTE_CONTROL_ID) if REMOTE_CONTROL_ID else {}
+
+
 try:
     from zoneinfo import ZoneInfo
 except Exception:
