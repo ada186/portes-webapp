@@ -49,6 +49,10 @@ REMOTE_CONTROL_ID = st.secrets.get("CONTROL_SHEET_ID", "")
 # Cargar configuración desde Google Sheets
 REMOTE_CFG = load_remote_config(REMOTE_CONTROL_ID) if REMOTE_CONTROL_ID else {}
 
+st.sidebar.write("📄 Config cargada desde hoja de control:")
+st.sidebar.json(REMOTE_CFG)
+
+
 
 try:
     from zoneinfo import ZoneInfo
