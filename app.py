@@ -263,8 +263,7 @@ with st.sidebar:
     spreadsheet_key = st.text_input("Spreadsheet key (ID)", value="")
     worksheet_name = st.text_input("Nombre de hoja (worksheet)", value="logs")
 
-    global ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM
-    global PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4, PRECIO_POR_KM_EXTRA
+  
     ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM = int(z1), int(z2), int(z3), int(z4)
     PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4, PRECIO_POR_KM_EXTRA = int(p1), int(p2), int(p3), int(p4), float(pextra)
 
