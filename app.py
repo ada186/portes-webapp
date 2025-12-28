@@ -45,6 +45,7 @@ def load_remote_config(control_sheet_id: str) -> dict:
     return cfg
 # ID de tu hoja de control (lo pusiste en Secrets)
 REMOTE_CONTROL_ID = st.secrets.get("CONTROL_SHEET_ID", "")
+st.sidebar.write("CONTROL_SHEET_ID:", REMOTE_CONTROL_ID)
 
 # Cargar configuración desde Google Sheets
 REMOTE_CFG = load_remote_config(REMOTE_CONTROL_ID) if REMOTE_CONTROL_ID else {}
