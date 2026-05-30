@@ -270,9 +270,13 @@ REMOTE_CFG = get_remote_config()
 
 with st.sidebar:
     st.header("⚙️ Configuración")
-    origin_address = st.text_input("Dirección de origen", value=DEFAULT_ORIGIN_ADDRESS)
-    origin_lat = st.number_input("Origen lat", value=DEFAULT_ORIGIN_LAT, format="%.6f")
-    origin_lon = st.number_input("Origen lon", value=DEFAULT_ORIGIN_LON, format="%.6f")
+    st.caption(f"📍 Origen fijo: {DEFAULT_ORIGIN_ADDRESS}")
+
+    # Coordenadas del origen verificadas manualmente — nunca se geocodifica
+    # para evitar que HERE lo resuelva a un punto incorrecto.
+    origin_lat = DEFAULT_ORIGIN_LAT
+    origin_lon = DEFAULT_ORIGIN_LON
+    origin_address = DEFAULT_ORIGIN_ADDRESS
 
     st.markdown("---")
     st.subheader("Destino")
