@@ -32,8 +32,8 @@ SHEETS_SCOPES = [
 # CONFIGURACIÓN POR DEFECTO (fallback si Google Sheets no está)
 # ================================================================
 DEFAULT_ORIGIN_ADDRESS = "C. de Servando Batanero, 67, 28017 Madrid"
-DEFAULT_ORIGIN_LAT = 40.437869
-DEFAULT_ORIGIN_LON = -3.646404
+DEFAULT_ORIGIN_LAT = 40.42995450669478
+DEFAULT_ORIGIN_LON = -3.644614746858031
 
 ZONA_1_KM = 3
 ZONA_2_KM = 5
