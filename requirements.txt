@@ -1,8 +1,7 @@
 streamlit
-requests
 folium
-polyline
 streamlit-folium
-python-dotenv
+requests
+flexpolyline
 gspread
 google-auth
