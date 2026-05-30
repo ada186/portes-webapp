@@ -53,7 +53,7 @@ TRUCK_PARAMS = {
     "truck[length]": 1000,       # cm
     "truck[grossWeight]": 16000, # kg
     "truck[axleCount]": 2,
-    "truck[type]": "delivery",
+    "truck[type]": "straight",
 }
 
 FIELDNAMES = [
