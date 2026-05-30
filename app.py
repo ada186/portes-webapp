@@ -5,7 +5,7 @@ import streamlit as st
 import folium
 from folium import Map, Marker, Circle, PolyLine, Element
 from streamlit_folium import st_folium
-import polyline as pl
+import flexpolyline as fl
 from datetime import datetime
 
 # ---- Zona horaria ----
@@ -154,9 +154,12 @@ def geocode_address(address, apikey, postal_code=None, city=None):
 
 def decode_poly(encoded):
     try:
-        return pl.decode(encoded, precision=6)
+        # HERE Routing v8 usa FlexPolyline, no el formato Google estándar.
+        # flexpolyline.decode devuelve lista de tuplas (lat, lng) o (lat, lng, z).
+        coords = fl.decode(encoded)
+        return [(c[0], c[1]) for c in coords]
     except Exception as e:
-        raise ValueError("Polyline inválida") from e
+        raise ValueError(f"Polyline inválida: {e}") from e
 
 def truck_route(origin, destination, apikey):
     base = "https://router.hereapi.com/v8/routes"
