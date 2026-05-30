@@ -319,7 +319,11 @@ with st.sidebar:
 
     go = st.button("Calcular ruta y precio", type="primary")
 
-map_col, info_col = st.columns([2, 1])
+# ================================================================
+# SESSION STATE — los resultados persisten entre recargas
+# ================================================================
+if "resultado" not in st.session_state:
+    st.session_state.resultado = None
 
 if go:
     if not api_key:
@@ -349,7 +353,11 @@ if go:
 
     distancia_km = round(length_m / 1000.0, 2)
     dur = human_duration(duration_s)
-    price = compute_tariff(distancia_km, int(z1), int(z2), int(z3), int(z4), int(p1), int(p2), int(p3), int(p4), float(pextra))
+    price = compute_tariff(
+        distancia_km,
+        int(z1), int(z2), int(z3), int(z4),
+        int(p1), int(p2), int(p3), int(p4), float(pextra)
+    )
 
     row = {
         "timestamp_iso": madrid_now_iso(),
@@ -370,52 +378,95 @@ if go:
         "precio_z1": int(p1), "precio_z2": int(p2), "precio_z3": int(p3), "precio_z4": int(p4),
         "precio_km_extra": float(pextra),
         "truckHeight": 4, "truckWidth": 2.5, "truckLength": 10,
-        "truckWeight": 16000, "truckAxleCount": 2, "truckType": "delivery",
+        "truckWeight": 16000, "truckAxleCount": 2, "truckType": "straight",
     }
 
+    # Guardar en session_state para que persista
+    st.session_state.resultado = {
+        "dest": dest,
+        "coords": coords,
+        "distancia_km": distancia_km,
+        "dur": dur,
+        "price": price,
+        "row": row,
+        "origin_lat": origin_lat,
+        "origin_lon": origin_lon,
+        "origin_address": origin_address,
+        "z1": int(z1), "z2": int(z2), "z3": int(z3), "z4": int(z4),
+        "p1": int(p1), "p2": int(p2), "p3": int(p3), "p4": int(p4),
+        "pextra": float(pextra),
+    }
+
+    # Logs (solo se ejecutan una vez al calcular, no en cada recarga)
+    if log_csv:
+        try:
+            log_to_csv(csv_path, row)
+        except Exception as e:
+            st.warning(f"No se pudo registrar en CSV: {e}")
+
+    if gs_enable:
+        if not _gspread_ready:
+            st.error("Faltan dependencias gspread/google-auth.")
+        elif not spreadsheet_key.strip():
+            st.error("Indica el Spreadsheet key (ID).")
+        else:
+            try:
+                append_to_gsheet(spreadsheet_key.strip(), worksheet_name.strip() or "logs", row)
+                st.success("✅ Fila añadida a Google Sheets")
+            except Exception as e:
+                st.warning(f"No se pudo subir a Google Sheets: {e}")
+
+# ================================================================
+# RENDERIZADO — usa session_state si hay resultado, si no muestra mapa vacío
+# ================================================================
+map_col, info_col = st.columns([2, 1])
+res = st.session_state.resultado
+
+if res:
     with info_col:
         st.subheader("Resultado")
-        st.metric("Distancia (km)", distancia_km)
-        st.metric("Duración estimada", dur)
-        st.metric("Precio (€)", f"{price:.2f} €")
-        st.caption(f"📍 Destino geocodificado: **{dest[2]}**")
-        st.caption(f"🏭 Origen: **{origin_address}**")
-
-        if log_csv:
-            try:
-                log_to_csv(csv_path, row)
-                st.success(f"✅ Guardado en CSV: {csv_path}")
-            except Exception as e:
-                st.warning(f"No se pudo registrar en CSV: {e}")
-
-        if gs_enable:
-            if not _gspread_ready:
-                st.error("Faltan dependencias gspread/google-auth.")
-            elif not spreadsheet_key.strip():
-                st.error("Indica el Spreadsheet key (ID).")
-            else:
-                try:
-                    append_to_gsheet(spreadsheet_key.strip(), worksheet_name.strip() or "logs", row)
-                    st.success("✅ Fila añadida a Google Sheets")
-                except Exception as e:
-                    st.warning(f"No se pudo subir a Google Sheets: {e}")
+        st.metric("Distancia (km)", res["distancia_km"])
+        st.metric("Duración estimada", res["dur"])
+        st.metric("Precio (€)", f"{res['price']:.2f} €")
+        st.caption(f"📍 Destino: **{res['dest'][2]}**")
+        st.caption(f"🏭 Origen: **{res['origin_address']}**")
+        if log_csv and go:
+            st.success(f"✅ Guardado en CSV: {csv_path}")
 
     with map_col:
-        m = Map(location=[origin_lat, origin_lon], zoom_start=12, control_scale=True)
-        add_zone_circles(m, origin_lat, origin_lon, int(z1), int(z2), int(z3), int(z4), int(p1), int(p2), int(p3), int(p4))
-        Marker([origin_lat, origin_lon], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
-        Marker([dest[0], dest[1]], tooltip=dest[2], icon=folium.Icon(color="red")).add_to(m)
-        PolyLine(locations=coords, weight=5, opacity=0.8).add_to(m)
-        m.get_root().html.add_child(Element(legend_html(int(z1), int(z2), int(z3), int(z4), int(p1), int(p2), int(p3), int(p4), float(pextra))))
+        m = Map(location=[res["origin_lat"], res["origin_lon"]], zoom_start=12, control_scale=True)
+        add_zone_circles(
+            m, res["origin_lat"], res["origin_lon"],
+            res["z1"], res["z2"], res["z3"], res["z4"],
+            res["p1"], res["p2"], res["p3"], res["p4"]
+        )
+        Marker(
+            [res["origin_lat"], res["origin_lon"]],
+            tooltip="Almacén (origen)", icon=folium.Icon(color="blue")
+        ).add_to(m)
+        Marker(
+            [res["dest"][0], res["dest"][1]],
+            tooltip=res["dest"][2], icon=folium.Icon(color="red")
+        ).add_to(m)
+        PolyLine(locations=res["coords"], weight=5, opacity=0.8).add_to(m)
+        m.get_root().html.add_child(Element(
+            legend_html(res["z1"], res["z2"], res["z3"], res["z4"],
+                        res["p1"], res["p2"], res["p3"], res["p4"], res["pextra"])
+        ))
         st_folium(m, width=None, height=600)
 
 else:
     with map_col:
         m = Map(location=[DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON], zoom_start=12, control_scale=True)
-        add_zone_circles(m, DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON,
-                         ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
-                         PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4)
-        Marker([DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
+        add_zone_circles(
+            m, DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON,
+            ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
+            PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4
+        )
+        Marker(
+            [DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON],
+            tooltip="Almacén (origen)", icon=folium.Icon(color="blue")
+        ).add_to(m)
         m.get_root().html.add_child(Element(legend_html(
             ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
             PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4,
