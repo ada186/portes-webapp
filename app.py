@@ -1,8 +1,5 @@
-
 import os
 import csv
-import time
-import math
 import requests
 import streamlit as st
 import folium
@@ -11,51 +8,7 @@ from streamlit_folium import st_folium
 import polyline as pl
 from datetime import datetime
 
-# === CONFIGURACIÓN REMOTA DESDE GOOGLE SHEETS ===
-from google.oauth2.service_account import Credentials
-import gspread
-
-def sheets_client_from_secrets():
-    """Crea un cliente de gspread usando las credenciales guardadas en Streamlit Secrets."""
-    info = dict(st.secrets["gcp_service_account"])
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive.readonly",
-    ]
-    creds = Credentials.from_service_account_info(info, scopes=scopes)
-    return gspread.authorize(creds)
-
-@st.cache_data(ttl=300)
-def load_remote_config(control_sheet_id: str) -> dict:
-    """
-    Lee pares key/value de la pestaña 'config' en tu hoja de control (portes_config).
-    """
-    gc = sheets_client_from_secrets()
-    sh = gc.open_by_key(control_sheet_id)
-    try:
-        ws = sh.worksheet("config")
-    except gspread.exceptions.WorksheetNotFound:
-        ws = sh.get_worksheet(0)
-
-    rows = ws.get_all_values()
-    cfg = {}
-    for r in rows:
-        if len(r) >= 2 and r[0] and r[1]:
-            cfg[r[0].strip()] = r[1].strip()
-    return cfg
-# ID de tu hoja de control (lo pusiste en Secrets)
-REMOTE_CONTROL_ID = st.secrets.get("CONTROL_SHEET_ID", "")
-st.sidebar.write("CONTROL_SHEET_ID:", REMOTE_CONTROL_ID)
-
-# Cargar configuración desde Google Sheets
-REMOTE_CFG = load_remote_config(REMOTE_CONTROL_ID) if REMOTE_CONTROL_ID else {}
-
-st.sidebar.write("Keys leídas:", list(REMOTE_CFG.keys()))
-st.sidebar.write("📄 Config cargada desde hoja de control:")
-st.sidebar.json(REMOTE_CFG)
-
-
-
+# ---- Zona horaria ----
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -75,14 +28,9 @@ SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
-def get_api_key():
-    if "HERE_API_KEY" in st.secrets:
-        return st.secrets["HERE_API_KEY"]
-    env_key = os.getenv("HERE_API_KEY")
-    if env_key:
-        return env_key
-    return None
-
+# ================================================================
+# CONFIGURACIÓN POR DEFECTO (fallback si Google Sheets no está)
+# ================================================================
 DEFAULT_ORIGIN_ADDRESS = "C. de Servando Batanero, 67, 28017 Madrid"
 DEFAULT_ORIGIN_LAT = 40.437869
 DEFAULT_ORIGIN_LON = -3.646404
@@ -96,27 +44,87 @@ PRECIO_ZONA_1 = 25
 PRECIO_ZONA_2 = 35
 PRECIO_ZONA_3 = 50
 PRECIO_ZONA_4 = 70
-PRECIO_POR_KM_EXTRA = 1
+PRECIO_POR_KM_EXTRA = 1.0
 
+# CORRECCIÓN: formato correcto para HERE Routing API v8
 TRUCK_PARAMS = {
-    "truckHeight": 4,
-    "truckWidth": 2.5,
-    "truckLength": 10,
-    "truckWeight": 16000,
-    "truckAxleCount": 2,
-    "truckType": "delivery"
+    "truck[height]": 400,        # cm
+    "truck[width]": 250,         # cm
+    "truck[length]": 1000,       # cm
+    "truck[grossWeight]": 16000, # kg
+    "truck[axleCount]": 2,
+    "truck[type]": "delivery",
 }
 
 FIELDNAMES = [
     "timestamp_iso",
-    "origin_address","origin_lat","origin_lon",
-    "dest_input_address","dest_input_postal","dest_input_city",
-    "dest_geocoded_title","dest_lat","dest_lon",
-    "distance_km","duration_seconds","duration_human","price_eur",
-    "zona_1_km","zona_2_km","zona_3_km","zona_4_km",
-    "precio_z1","precio_z2","precio_z3","precio_z4","precio_km_extra",
-    "truckHeight","truckWidth","truckLength","truckWeight","truckAxleCount","truckType"
+    "origin_address", "origin_lat", "origin_lon",
+    "dest_input_address", "dest_input_postal", "dest_input_city",
+    "dest_geocoded_title", "dest_lat", "dest_lon",
+    "distance_km", "duration_seconds", "duration_human", "price_eur",
+    "zona_1_km", "zona_2_km", "zona_3_km", "zona_4_km",
+    "precio_z1", "precio_z2", "precio_z3", "precio_z4", "precio_km_extra",
+    "truckHeight", "truckWidth", "truckLength", "truckWeight", "truckAxleCount", "truckType",
 ]
+
+# ================================================================
+# CONFIGURACIÓN REMOTA DESDE GOOGLE SHEETS (opcional)
+# ================================================================
+def sheets_client_from_secrets():
+    """Crea cliente gspread desde Streamlit Secrets."""
+    if not _gspread_ready:
+        raise RuntimeError("gspread/google-auth no están instalados.")
+    if "gcp_service_account" not in st.secrets:
+        raise RuntimeError("Falta 'gcp_service_account' en st.secrets.")
+    info = dict(st.secrets["gcp_service_account"])
+    creds = Credentials.from_service_account_info(info, scopes=SHEETS_SCOPES)
+    return gspread.authorize(creds)
+
+@st.cache_data(ttl=300)
+def load_remote_config(control_sheet_id: str) -> dict:
+    """Lee pares key/value de la pestaña 'config' en la hoja de control."""
+    gc = sheets_client_from_secrets()
+    sh = gc.open_by_key(control_sheet_id)
+    try:
+        ws = sh.worksheet("config")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.get_worksheet(0)
+    rows = ws.get_all_values()
+    cfg = {}
+    for r in rows:
+        if len(r) >= 2 and r[0] and r[1]:
+            cfg[r[0].strip()] = r[1].strip()
+    return cfg
+
+def get_remote_config() -> dict:
+    """Intenta cargar la configuración remota. Devuelve {} si no está disponible."""
+    control_id = st.secrets.get("CONTROL_SHEET_ID", "")
+    if not control_id or not _gspread_ready:
+        return {}
+    try:
+        return load_remote_config(control_id)
+    except Exception:
+        return {}
+
+def cfg_float(cfg: dict, key: str, default: float) -> float:
+    try:
+        return float(cfg[key])
+    except (KeyError, ValueError, TypeError):
+        return default
+
+def cfg_int(cfg: dict, key: str, default: int) -> int:
+    try:
+        return int(float(cfg[key]))
+    except (KeyError, ValueError, TypeError):
+        return default
+
+# ================================================================
+# FUNCIONES DE NEGOCIO
+# ================================================================
+def get_api_key():
+    if "HERE_API_KEY" in st.secrets:
+        return st.secrets["HERE_API_KEY"]
+    return os.getenv("HERE_API_KEY")
 
 def geocode_address(address, apikey, postal_code=None, city=None):
     base = "https://geocode.search.hereapi.com/v1/geocode"
@@ -131,7 +139,7 @@ def geocode_address(address, apikey, postal_code=None, city=None):
         raise RuntimeError(f"Geocoding failed: {r.status_code} - {r.text}")
     data = r.json()
     if not data.get("items"):
-        raise ValueError("No results for that address.")
+        raise ValueError("No se encontraron resultados para esa dirección.")
     item = data["items"][0]
     lat = item["position"]["lat"]
     lon = item["position"]["lng"]
@@ -148,7 +156,7 @@ def decode_poly(encoded):
     try:
         return pl.decode(encoded, precision=6)
     except Exception as e:
-        raise ValueError("Invalid polyline") from e
+        raise ValueError("Polyline inválida") from e
 
 def truck_route(origin, destination, apikey):
     base = "https://router.hereapi.com/v8/routes"
@@ -165,27 +173,25 @@ def truck_route(origin, destination, apikey):
         raise RuntimeError(f"Routing failed: {r.status_code} - {r.text}")
     data = r.json()
     if not data.get("routes"):
-        raise ValueError("No route found.")
+        raise ValueError("No se encontró ninguna ruta.")
     route = data["routes"][0]["sections"][0]
     summary = route["summary"]
-    length_m = summary["length"]
-    duration_s = summary["duration"]
-    poly = route["polyline"]
-    coords = decode_poly(poly)
-    return coords, length_m, duration_s
+    coords = decode_poly(route["polyline"])
+    return coords, summary["length"], summary["duration"]
 
-def compute_tariff(distance_km):
-    if distance_km <= ZONA_1_KM:
-        return PRECIO_ZONA_1
-    elif distance_km <= ZONA_2_KM:
-        return PRECIO_ZONA_2
-    elif distance_km <= ZONA_3_KM:
-        return PRECIO_ZONA_3
-    elif distance_km <= ZONA_4_KM:
-        return PRECIO_ZONA_4
+def compute_tariff(distance_km, z1, z2, z3, z4, p1, p2, p3, p4, pextra):
+    if distance_km <= z1:
+        return p1
+    elif distance_km <= z2:
+        return p2
+    elif distance_km <= z3:
+        return p3
+    elif distance_km <= z4:
+        return p4
     else:
-        km_extra = distance_km - ZONA_2_KM
-        return PRECIO_ZONA_4 + km_extra * PRECIO_POR_KM_EXTRA
+        # CORRECCIÓN: km extra se cuentan desde el límite de la zona 4
+        km_extra = distance_km - z4
+        return p4 + km_extra * pextra
 
 def human_duration(seconds: int) -> str:
     m, s = divmod(int(seconds), 60)
@@ -194,26 +200,26 @@ def human_duration(seconds: int) -> str:
     if m: return f"{m}m {s}s"
     return f"{s}s"
 
-def add_zone_circles(m, center_lat, center_lon):
-    Circle(radius=ZONA_1_KM*1000, location=[center_lat, center_lon], color="green",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{ZONA_1_KM} km): {PRECIO_ZONA_1} €").add_to(m)
-    Circle(radius=ZONA_2_KM*1000, location=[center_lat, center_lon], color="orange",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €").add_to(m)
-    Circle(radius=ZONA_3_KM*1000, location=[center_lat, center_lon], color="blue",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €").add_to(m)
-    Circle(radius=ZONA_4_KM*1000, location=[center_lat, center_lon], color="purple",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €").add_to(m)
+def add_zone_circles(m, center_lat, center_lon, z1, z2, z3, z4, p1, p2, p3, p4):
+    Circle(radius=z1*1000, location=[center_lat, center_lon], color="green",
+           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{z1} km): {p1} €").add_to(m)
+    Circle(radius=z2*1000, location=[center_lat, center_lon], color="orange",
+           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{z2} km): {p2} €").add_to(m)
+    Circle(radius=z3*1000, location=[center_lat, center_lon], color="blue",
+           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{z3} km): {p3} €").add_to(m)
+    Circle(radius=z4*1000, location=[center_lat, center_lon], color="purple",
+           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{z4} km): {p4} €").add_to(m)
 
-def legend_html():
+def legend_html(z1, z2, z3, z4, p1, p2, p3, p4, pextra):
     return f"""
-    <div style="position: fixed; bottom: 25px; left: 25px; width: 260px;
-    border:2px solid #888; background: white; z-index:9999; font-size:14px; padding:8px;">
+    <div style="position: fixed; bottom: 25px; left: 25px; width: 270px;
+    border:2px solid #888; background: white; z-index:9999; font-size:14px; padding:10px; border-radius:6px;">
     <b>Tarifas</b><br>
-    Zona 1 (≤{ZONA_1_KM} km): {PRECIO_ZONA_1} €<br>
-    Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €<br>
-    Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €<br>
-    Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €<br>
-    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_2_KM} km
+    🟢 Zona 1 (≤{z1} km): {p1} €<br>
+    🟠 Zona 2 (≤{z2} km): {p2} €<br>
+    🔵 Zona 3 (≤{z3} km): {p3} €<br>
+    🟣 Zona 4 (≤{z4} km): {p4} €<br>
+    +{pextra} €/km extra a partir de {z4} km
     </div>
     """
 
@@ -235,18 +241,7 @@ def log_to_csv(csv_path: str, row: dict):
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         if not file_exists:
             writer.writeheader()
-        filtered = {k: row.get(k, "") for k in FIELDNAMES}
-        writer.writerow(filtered)
-
-def sheets_client_from_secrets():
-    if not _gspread_ready:
-        raise RuntimeError("gspread/google-auth no están instalados.")
-    if "gcp_service_account" not in st.secrets:
-        raise RuntimeError("Falta 'gcp_service_account' en st.secrets.")
-    info = dict(st.secrets["gcp_service_account"])
-    creds = Credentials.from_service_account_info(info, scopes=SHEETS_SCOPES)
-    gc = gspread.authorize(creds)
-    return gc
+        writer.writerow({k: row.get(k, "") for k in FIELDNAMES})
 
 def append_to_gsheet(spreadsheet_key: str, worksheet_name: str, row: dict):
     gc = sheets_client_from_secrets()
@@ -256,19 +251,22 @@ def append_to_gsheet(spreadsheet_key: str, worksheet_name: str, row: dict):
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title=worksheet_name, rows=1, cols=len(FIELDNAMES))
         ws.append_row(FIELDNAMES, value_input_option="RAW")
-    # Ensure header exists
-    header = ws.row_values(1)
-    if not header:
+    if not ws.row_values(1):
         ws.append_row(FIELDNAMES, value_input_option="RAW")
-    values = [row.get(k, "") for k in FIELDNAMES]
-    ws.append_row(values, value_input_option="USER_ENTERED")
+    ws.append_row([row.get(k, "") for k in FIELDNAMES], value_input_option="USER_ENTERED")
 
+# ================================================================
+# INTERFAZ
+# ================================================================
 st.set_page_config(page_title="Cálculo de porte (camión)", layout="wide")
 st.title("🚚 Cálculo de porte por ruta (HERE)")
 
 api_key = get_api_key()
 if not api_key:
-    st.warning("Configura tu HERE_API_KEY en **st.secrets** o variable de entorno HERE_API_KEY.")
+    st.warning("Configura tu HERE_API_KEY en **st.secrets** o como variable de entorno HERE_API_KEY.")
+
+# Cargar configuración remota (silencioso si no está disponible)
+REMOTE_CFG = get_remote_config()
 
 with st.sidebar:
     st.header("⚙️ Configuración")
@@ -284,19 +282,23 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("Tarifas")
+    # Usar valores remotos si están disponibles, si no los hardcodeados
     col_a, col_b = st.columns(2)
     with col_a:
-        z1 = st.number_input("Zona 1 (km)", value=ZONA_1_KM, step=1)
-        z2 = st.number_input("Zona 2 (km)", value=ZONA_2_KM, step=1)
+        z1 = st.number_input("Zona 1 (km)", value=cfg_int(REMOTE_CFG, "zona_1_km", ZONA_1_KM), step=1)
+        z2 = st.number_input("Zona 2 (km)", value=cfg_int(REMOTE_CFG, "zona_2_km", ZONA_2_KM), step=1)
     with col_b:
-        z3 = st.number_input("Zona 3 (km)", value=ZONA_3_KM, step=1)
-        z4 = st.number_input("Zona 4 (km)", value=ZONA_4_KM, step=1)
+        z3 = st.number_input("Zona 3 (km)", value=cfg_int(REMOTE_CFG, "zona_3_km", ZONA_3_KM), step=1)
+        z4 = st.number_input("Zona 4 (km)", value=cfg_int(REMOTE_CFG, "zona_4_km", ZONA_4_KM), step=1)
 
-    p1 = st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1)
-    p2 = st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1)
-    p3 = st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1)
-    p4 = st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1)
-    pextra = st.number_input("€ por km extra", value=float(PRECIO_POR_KM_EXTRA), step=0.1)
+    p1 = st.number_input("Precio Zona 1 (€)", value=cfg_int(REMOTE_CFG, "precio_z1", PRECIO_ZONA_1), step=1)
+    p2 = st.number_input("Precio Zona 2 (€)", value=cfg_int(REMOTE_CFG, "precio_z2", PRECIO_ZONA_2), step=1)
+    p3 = st.number_input("Precio Zona 3 (€)", value=cfg_int(REMOTE_CFG, "precio_z3", PRECIO_ZONA_3), step=1)
+    p4 = st.number_input("Precio Zona 4 (€)", value=cfg_int(REMOTE_CFG, "precio_z4", PRECIO_ZONA_4), step=1)
+    pextra = st.number_input("€/km extra", value=cfg_float(REMOTE_CFG, "precio_km_extra", float(PRECIO_POR_KM_EXTRA)), step=0.1)
+
+    if REMOTE_CFG:
+        st.caption("✅ Tarifas cargadas desde Google Sheets")
 
     st.markdown("---")
     st.subheader("Registro en CSV")
@@ -306,12 +308,14 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Subir a Google Sheets")
     gs_enable = st.checkbox("Activar subida a Google Sheets", value=False)
-    spreadsheet_key = st.text_input("Spreadsheet key (ID)", value="")
-    worksheet_name = st.text_input("Nombre de hoja (worksheet)", value="logs")
-
-  
-    ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM = int(z1), int(z2), int(z3), int(z4)
-    PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4, PRECIO_POR_KM_EXTRA = int(p1), int(p2), int(p3), int(p4), float(pextra)
+    spreadsheet_key = st.text_input(
+        "Spreadsheet key (ID)",
+        value=REMOTE_CFG.get("spreadsheet_key", "")
+    )
+    worksheet_name = st.text_input(
+        "Nombre de hoja (worksheet)",
+        value=REMOTE_CFG.get("worksheet_name", "logs")
+    )
 
     go = st.button("Calcular ruta y precio", type="primary")
 
@@ -319,12 +323,16 @@ map_col, info_col = st.columns([2, 1])
 
 if go:
     if not api_key:
-        st.error("Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno.")
+        st.error("Falta HERE_API_KEY.")
         st.stop()
-    with st.spinner("Geocodificando direcciones..."):
+
+    with st.spinner("Geocodificando dirección de destino..."):
         try:
-            orig = (origin_lat, origin_lon, origin_address, origin_lat, origin_lon)
-            dlat, dlon, dtitle, dacc_lat, dacc_lon = geocode_address(dest_address, api_key, postal_code=dest_postal or None, city=dest_city or None)
+            dlat, dlon, dtitle, dacc_lat, dacc_lon = geocode_address(
+                dest_address, api_key,
+                postal_code=dest_postal or None,
+                city=dest_city or None
+            )
             dest = (dacc_lat, dacc_lon, dtitle)
         except Exception as e:
             st.error(f"Error geocodificando: {e}")
@@ -332,14 +340,16 @@ if go:
 
     with st.spinner("Calculando ruta para camión..."):
         try:
-            coords, length_m, duration_s = truck_route((origin_lat, origin_lon), (dest[0], dest[1]), api_key)
+            coords, length_m, duration_s = truck_route(
+                (origin_lat, origin_lon), (dest[0], dest[1]), api_key
+            )
         except Exception as e:
             st.error(f"Error calculando ruta: {e}")
             st.stop()
 
     distancia_km = round(length_m / 1000.0, 2)
     dur = human_duration(duration_s)
-    price = compute_tariff(distancia_km)
+    price = compute_tariff(distancia_km, int(z1), int(z2), int(z3), int(z4), int(p1), int(p2), int(p3), int(p4), float(pextra))
 
     row = {
         "timestamp_iso": madrid_now_iso(),
@@ -356,59 +366,61 @@ if go:
         "duration_seconds": int(duration_s),
         "duration_human": dur,
         "price_eur": round(price, 2),
-        "zona_1_km": ZONA_1_KM, "zona_2_km": ZONA_2_KM, "zona_3_km": ZONA_3_KM, "zona_4_km": ZONA_4_KM,
-        "precio_z1": PRECIO_ZONA_1, "precio_z2": PRECIO_ZONA_2, "precio_z3": PRECIO_ZONA_3, "precio_z4": PRECIO_ZONA_4,
-        "precio_km_extra": PRECIO_POR_KM_EXTRA,
-        "truckHeight": TRUCK_PARAMS.get("truckHeight"),
-        "truckWidth": TRUCK_PARAMS.get("truckWidth"),
-        "truckLength": TRUCK_PARAMS.get("truckLength"),
-        "truckWeight": TRUCK_PARAMS.get("truckWeight"),
-        "truckAxleCount": TRUCK_PARAMS.get("truckAxleCount"),
-        "truckType": TRUCK_PARAMS.get("truckType"),
+        "zona_1_km": int(z1), "zona_2_km": int(z2), "zona_3_km": int(z3), "zona_4_km": int(z4),
+        "precio_z1": int(p1), "precio_z2": int(p2), "precio_z3": int(p3), "precio_z4": int(p4),
+        "precio_km_extra": float(pextra),
+        "truckHeight": 4, "truckWidth": 2.5, "truckLength": 10,
+        "truckWeight": 16000, "truckAxleCount": 2, "truckType": "delivery",
     }
 
     with info_col:
         st.subheader("Resultado")
         st.metric("Distancia (km)", distancia_km)
-        st.metric("Duración", dur)
-        st.metric("Precio (€)", f"{price:.2f}")
-        st.caption(f"Destino: **{dest[2]}**")
-        st.caption(f"Origen: **{origin_address}**")
+        st.metric("Duración estimada", dur)
+        st.metric("Precio (€)", f"{price:.2f} €")
+        st.caption(f"📍 Destino geocodificado: **{dest[2]}**")
+        st.caption(f"🏭 Origen: **{origin_address}**")
 
         if log_csv:
             try:
                 log_to_csv(csv_path, row)
-                st.success(f"Guardado en CSV: {csv_path}")
+                st.success(f"✅ Guardado en CSV: {csv_path}")
             except Exception as e:
-                st.warning(f"No se pudo registrar en CSV ({csv_path}): {e}")
+                st.warning(f"No se pudo registrar en CSV: {e}")
 
         if gs_enable:
-            try:
-                if not _gspread_ready:
-                    st.error("Faltan dependencias gspread/google-auth (instálalas).")
-                elif not spreadsheet_key.strip():
-                    st.error("Debes indicar el Spreadsheet key (ID).")
-                else:
+            if not _gspread_ready:
+                st.error("Faltan dependencias gspread/google-auth.")
+            elif not spreadsheet_key.strip():
+                st.error("Indica el Spreadsheet key (ID).")
+            else:
+                try:
                     append_to_gsheet(spreadsheet_key.strip(), worksheet_name.strip() or "logs", row)
-                    st.success("Fila añadida a Google Sheets ✅")
-                    st.caption("Si ves 'PERMISSION_DENIED', comparte el Sheet con el Service Account.")
-            except Exception as e:
-                st.warning(f"No se pudo subir a Google Sheets: {e}")
+                    st.success("✅ Fila añadida a Google Sheets")
+                except Exception as e:
+                    st.warning(f"No se pudo subir a Google Sheets: {e}")
 
     with map_col:
         m = Map(location=[origin_lat, origin_lon], zoom_start=12, control_scale=True)
-        add_zone_circles(m, origin_lat, origin_lon)
+        add_zone_circles(m, origin_lat, origin_lon, int(z1), int(z2), int(z3), int(z4), int(p1), int(p2), int(p3), int(p4))
         Marker([origin_lat, origin_lon], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
         Marker([dest[0], dest[1]], tooltip=dest[2], icon=folium.Icon(color="red")).add_to(m)
         PolyLine(locations=coords, weight=5, opacity=0.8).add_to(m)
-        m.get_root().html.add_child(Element(legend_html()))
+        m.get_root().html.add_child(Element(legend_html(int(z1), int(z2), int(z3), int(z4), int(p1), int(p2), int(p3), int(p4), float(pextra))))
         st_folium(m, width=None, height=600)
+
 else:
     with map_col:
         m = Map(location=[DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON], zoom_start=12, control_scale=True)
-        add_zone_circles(m, DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON)
+        add_zone_circles(m, DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON,
+                         ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
+                         PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4)
         Marker([DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
-        m.get_root().html.add_child(Element(legend_html()))
+        m.get_root().html.add_child(Element(legend_html(
+            ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
+            PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4,
+            PRECIO_POR_KM_EXTRA
+        )))
         st_folium(m, width=None, height=600)
 
     with info_col:
