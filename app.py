@@ -49,19 +49,27 @@ PRECIO_ZONA_3 = 50
 PRECIO_ZONA_4 = 70
 PRECIO_POR_KM_EXTRA = 1
 
+# Dimensiones reales del camión, en las unidades "humanas" (metros/kg) que
+# se usan en el resto de la app. A partir de aquí se convierten a lo que
+# pide HERE Routing v8: height/width/length en CENTÍMETROS ENTEROS.
+TRUCK_HEIGHT_M = 4
+TRUCK_WIDTH_M = 2.5
+TRUCK_LENGTH_M = 10
+TRUCK_GROSS_WEIGHT_KG = 16000
+TRUCK_AXLE_COUNT = 2
+
 # HERE Routing v8 exige notación de corchetes para los atributos de camión,
-# y "straight" es el tipo de vehículo válido (no "delivery").
+# "straight" es el tipo de vehículo válido (no "delivery"), y height/width/
+# length deben mandarse como enteros en centímetros (no metros con decimales;
+# por eso "truck[width]": 2.5 daba "Invalid value for parameter 'truck[width]'").
 TRUCK_PARAMS = {
-    "truck[height]": 4,
-    "truck[width]": 2.5,
-    "truck[length]": 10,
-    "truck[grossWeight]": 16000,
-    "truck[axleCount]": 2,
+    "truck[height]": int(round(TRUCK_HEIGHT_M * 100)),
+    "truck[width]": int(round(TRUCK_WIDTH_M * 100)),
+    "truck[length]": int(round(TRUCK_LENGTH_M * 100)),
+    "truck[grossWeight]": TRUCK_GROSS_WEIGHT_KG,
+    "truck[axleCount]": TRUCK_AXLE_COUNT,
     "truck[type]": "straight",
 }
-# NOTA: revisa en la documentación de HERE si height/width/length deben ir
-# en metros o en centímetros; si tus rutas fallan por "invalid parameter",
-# prueba a multiplicar estos tres valores por 100.
 
 FIELDNAMES = [
     "timestamp_iso",
