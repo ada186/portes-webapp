@@ -1,14 +1,13 @@
 import os
-import csv
+import math
 import requests
 import streamlit as st
 import folium
 from folium import Map, Marker, Circle, PolyLine, Element
 from streamlit_folium import st_folium
-import flexpolyline as fl
+import flexpolyline as fp
 from datetime import datetime
 
-# ---- Zona horaria ----
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -28,13 +27,17 @@ SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
-# ================================================================
-# CONFIGURACIÓN POR DEFECTO (fallback si Google Sheets no está)
-# ================================================================
-DEFAULT_ORIGIN_ADDRESS = "C. de Servando Batanero, 67, 28017 Madrid"
-DEFAULT_ORIGIN_LAT = 40.42995450669478
-DEFAULT_ORIGIN_LON = -3.644614746858031
+# =========================================================
+# ORIGEN FIJO DEL ALMACÉN (no editable desde la interfaz)
+# =========================================================
+ORIGIN_ADDRESS = "Almacén (origen fijo)"
+ORIGIN_LAT = 40.42995450669478
+ORIGIN_LON = -3.644614746858031
 
+# =========================================================
+# TARIFAS POR DEFECTO
+# (se sobreescriben con los valores de la hoja de control si existe)
+# =========================================================
 ZONA_1_KM = 3
 ZONA_2_KM = 5
 ZONA_3_KM = 10
@@ -44,17 +47,21 @@ PRECIO_ZONA_1 = 25
 PRECIO_ZONA_2 = 35
 PRECIO_ZONA_3 = 50
 PRECIO_ZONA_4 = 70
-PRECIO_POR_KM_EXTRA = 1.0
+PRECIO_POR_KM_EXTRA = 1
 
-# CORRECCIÓN: formato correcto para HERE Routing API v8
+# HERE Routing v8 exige notación de corchetes para los atributos de camión,
+# y "straight" es el tipo de vehículo válido (no "delivery").
 TRUCK_PARAMS = {
-    "truck[height]": 400,        # cm
-    "truck[width]": 250,         # cm
-    "truck[length]": 1000,       # cm
-    "truck[grossWeight]": 16000, # kg
+    "truck[height]": 4,
+    "truck[width]": 2.5,
+    "truck[length]": 10,
+    "truck[grossWeight]": 16000,
     "truck[axleCount]": 2,
     "truck[type]": "straight",
 }
+# NOTA: revisa en la documentación de HERE si height/width/length deben ir
+# en metros o en centímetros; si tus rutas fallan por "invalid parameter",
+# prueba a multiplicar estos tres valores por 100.
 
 FIELDNAMES = [
     "timestamp_iso",
@@ -64,14 +71,15 @@ FIELDNAMES = [
     "distance_km", "duration_seconds", "duration_human", "price_eur",
     "zona_1_km", "zona_2_km", "zona_3_km", "zona_4_km",
     "precio_z1", "precio_z2", "precio_z3", "precio_z4", "precio_km_extra",
-    "truckHeight", "truckWidth", "truckLength", "truckWeight", "truckAxleCount", "truckType",
+    "truck_height", "truck_width", "truck_length", "truck_gross_weight",
+    "truck_axle_count", "truck_type",
 ]
 
-# ================================================================
-# CONFIGURACIÓN REMOTA DESDE GOOGLE SHEETS (opcional)
-# ================================================================
+# =========================================================
+# CONFIGURACIÓN REMOTA (hoja de control "portes_config")
+# =========================================================
 def sheets_client_from_secrets():
-    """Crea cliente gspread desde Streamlit Secrets."""
+    """Crea un cliente de gspread usando las credenciales de Streamlit Secrets."""
     if not _gspread_ready:
         raise RuntimeError("gspread/google-auth no están instalados.")
     if "gcp_service_account" not in st.secrets:
@@ -82,7 +90,7 @@ def sheets_client_from_secrets():
 
 @st.cache_data(ttl=300)
 def load_remote_config(control_sheet_id: str) -> dict:
-    """Lee pares key/value de la pestaña 'config' en la hoja de control."""
+    """Lee pares clave/valor de la pestaña 'config' en la hoja de control."""
     gc = sheets_client_from_secrets()
     sh = gc.open_by_key(control_sheet_id)
     try:
@@ -96,36 +104,48 @@ def load_remote_config(control_sheet_id: str) -> dict:
             cfg[r[0].strip()] = r[1].strip()
     return cfg
 
-def get_remote_config() -> dict:
-    """Intenta cargar la configuración remota. Devuelve {} si no está disponible."""
-    control_id = st.secrets.get("CONTROL_SHEET_ID", "")
-    if not control_id or not _gspread_ready:
-        return {}
-    try:
-        return load_remote_config(control_id)
-    except Exception:
-        return {}
-
-def cfg_float(cfg: dict, key: str, default: float) -> float:
-    try:
-        return float(cfg[key])
-    except (KeyError, ValueError, TypeError):
-        return default
-
-def cfg_int(cfg: dict, key: str, default: int) -> int:
+def cfg_int(cfg, key, default):
     try:
         return int(float(cfg[key]))
-    except (KeyError, ValueError, TypeError):
+    except Exception:
         return default
 
-# ================================================================
-# FUNCIONES DE NEGOCIO
-# ================================================================
+def cfg_float(cfg, key, default):
+    try:
+        return float(cfg[key])
+    except Exception:
+        return default
+
+REMOTE_CONTROL_ID = st.secrets.get("CONTROL_SHEET_ID", "")
+REMOTE_CFG = {}
+if REMOTE_CONTROL_ID:
+    try:
+        REMOTE_CFG = load_remote_config(REMOTE_CONTROL_ID)
+    except Exception as e:
+        st.sidebar.warning(f"No se pudo leer la hoja de control: {e}")
+
+# La hoja de control (si existe) se usa como fuente de los valores por defecto.
+ZONA_1_KM = cfg_int(REMOTE_CFG, "ZONA_1_KM", ZONA_1_KM)
+ZONA_2_KM = cfg_int(REMOTE_CFG, "ZONA_2_KM", ZONA_2_KM)
+ZONA_3_KM = cfg_int(REMOTE_CFG, "ZONA_3_KM", ZONA_3_KM)
+ZONA_4_KM = cfg_int(REMOTE_CFG, "ZONA_4_KM", ZONA_4_KM)
+PRECIO_ZONA_1 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_1", PRECIO_ZONA_1)
+PRECIO_ZONA_2 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_2", PRECIO_ZONA_2)
+PRECIO_ZONA_3 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_3", PRECIO_ZONA_3)
+PRECIO_ZONA_4 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_4", PRECIO_ZONA_4)
+PRECIO_POR_KM_EXTRA = cfg_float(REMOTE_CFG, "PRECIO_POR_KM_EXTRA", PRECIO_POR_KM_EXTRA)
+
 def get_api_key():
     if "HERE_API_KEY" in st.secrets:
         return st.secrets["HERE_API_KEY"]
-    return os.getenv("HERE_API_KEY")
+    env_key = os.getenv("HERE_API_KEY")
+    if env_key:
+        return env_key
+    return None
 
+# =========================================================
+# HERE Geocoding / Routing
+# =========================================================
 def geocode_address(address, apikey, postal_code=None, city=None):
     base = "https://geocode.search.hereapi.com/v1/geocode"
     q = address
@@ -139,7 +159,7 @@ def geocode_address(address, apikey, postal_code=None, city=None):
         raise RuntimeError(f"Geocoding failed: {r.status_code} - {r.text}")
     data = r.json()
     if not data.get("items"):
-        raise ValueError("No se encontraron resultados para esa dirección.")
+        raise ValueError("No results for that address.")
     item = data["items"][0]
     lat = item["position"]["lat"]
     lon = item["position"]["lng"]
@@ -153,13 +173,13 @@ def geocode_address(address, apikey, postal_code=None, city=None):
     return (lat, lon, title, access_lat, access_lon)
 
 def decode_poly(encoded):
+    """Decodifica el FlexPolyline devuelto por HERE Routing v8."""
     try:
-        # HERE Routing v8 usa FlexPolyline, no el formato Google estándar.
-        # flexpolyline.decode devuelve lista de tuplas (lat, lng) o (lat, lng, z).
-        coords = fl.decode(encoded)
-        return [(c[0], c[1]) for c in coords]
+        decoded = fp.decode(encoded)
+        # flexpolyline devuelve (lat, lon[, z]); nos quedamos solo con lat/lon
+        return [(lat, lon) for lat, lon, *_rest in decoded]
     except Exception as e:
-        raise ValueError(f"Polyline inválida: {e}") from e
+        raise ValueError("Invalid polyline") from e
 
 def truck_route(origin, destination, apikey):
     base = "https://router.hereapi.com/v8/routes"
@@ -176,53 +196,57 @@ def truck_route(origin, destination, apikey):
         raise RuntimeError(f"Routing failed: {r.status_code} - {r.text}")
     data = r.json()
     if not data.get("routes"):
-        raise ValueError("No se encontró ninguna ruta.")
+        raise ValueError("No route found.")
     route = data["routes"][0]["sections"][0]
     summary = route["summary"]
-    coords = decode_poly(route["polyline"])
-    return coords, summary["length"], summary["duration"]
+    length_m = summary["length"]
+    duration_s = summary["duration"]
+    poly = route["polyline"]
+    coords = decode_poly(poly)
+    return coords, length_m, duration_s
 
-def compute_tariff(distance_km, z1, z2, z3, z4, p1, p2, p3, p4, pextra):
-    if distance_km <= z1:
-        return p1
-    elif distance_km <= z2:
-        return p2
-    elif distance_km <= z3:
-        return p3
-    elif distance_km <= z4:
-        return p4
+def compute_tariff(distance_km):
+    if distance_km <= ZONA_1_KM:
+        return PRECIO_ZONA_1
+    elif distance_km <= ZONA_2_KM:
+        return PRECIO_ZONA_2
+    elif distance_km <= ZONA_3_KM:
+        return PRECIO_ZONA_3
+    elif distance_km <= ZONA_4_KM:
+        return PRECIO_ZONA_4
     else:
-        # CORRECCIÓN: km extra se cuentan desde el límite de la zona 4
-        km_extra = distance_km - z4
-        return p4 + km_extra * pextra
+        km_extra = distance_km - ZONA_4_KM
+        return PRECIO_ZONA_4 + km_extra * PRECIO_POR_KM_EXTRA
 
 def human_duration(seconds: int) -> str:
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
-    if h: return f"{h}h {m}m {s}s"
-    if m: return f"{m}m {s}s"
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
     return f"{s}s"
 
-def add_zone_circles(m, center_lat, center_lon, z1, z2, z3, z4, p1, p2, p3, p4):
-    Circle(radius=z1*1000, location=[center_lat, center_lon], color="green",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{z1} km): {p1} €").add_to(m)
-    Circle(radius=z2*1000, location=[center_lat, center_lon], color="orange",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{z2} km): {p2} €").add_to(m)
-    Circle(radius=z3*1000, location=[center_lat, center_lon], color="blue",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{z3} km): {p3} €").add_to(m)
-    Circle(radius=z4*1000, location=[center_lat, center_lon], color="purple",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{z4} km): {p4} €").add_to(m)
+def add_zone_circles(m, center_lat, center_lon):
+    Circle(radius=ZONA_1_KM * 1000, location=[center_lat, center_lon], color="green",
+           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{ZONA_1_KM} km): {PRECIO_ZONA_1} €").add_to(m)
+    Circle(radius=ZONA_2_KM * 1000, location=[center_lat, center_lon], color="orange",
+           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €").add_to(m)
+    Circle(radius=ZONA_3_KM * 1000, location=[center_lat, center_lon], color="blue",
+           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €").add_to(m)
+    Circle(radius=ZONA_4_KM * 1000, location=[center_lat, center_lon], color="purple",
+           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €").add_to(m)
 
-def legend_html(z1, z2, z3, z4, p1, p2, p3, p4, pextra):
+def legend_html():
     return f"""
-    <div style="position: fixed; bottom: 25px; left: 25px; width: 270px;
-    border:2px solid #888; background: white; z-index:9999; font-size:14px; padding:10px; border-radius:6px;">
+    <div style="position: fixed; bottom: 25px; left: 25px; width: 260px;
+    border:2px solid #888; background: white; z-index:9999; font-size:14px; padding:8px;">
     <b>Tarifas</b><br>
-    🟢 Zona 1 (≤{z1} km): {p1} €<br>
-    🟠 Zona 2 (≤{z2} km): {p2} €<br>
-    🔵 Zona 3 (≤{z3} km): {p3} €<br>
-    🟣 Zona 4 (≤{z4} km): {p4} €<br>
-    +{pextra} €/km extra a partir de {z4} km
+    Zona 1 (≤{ZONA_1_KM} km): {PRECIO_ZONA_1} €<br>
+    Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €<br>
+    Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €<br>
+    Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €<br>
+    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_4_KM} km
     </div>
     """
 
@@ -232,20 +256,9 @@ def madrid_now_iso():
         return datetime.now(tz).isoformat(timespec="seconds")
     return datetime.now().isoformat(timespec="seconds")
 
-def ensure_parent_dir(path: str):
-    parent = os.path.dirname(path)
-    if parent and not os.path.exists(parent):
-        os.makedirs(parent, exist_ok=True)
-
-def log_to_csv(csv_path: str, row: dict):
-    ensure_parent_dir(csv_path)
-    file_exists = os.path.exists(csv_path)
-    with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({k: row.get(k, "") for k in FIELDNAMES})
-
+# =========================================================
+# Logging automático a Google Sheets
+# =========================================================
 def append_to_gsheet(spreadsheet_key: str, worksheet_name: str, row: dict):
     gc = sheets_client_from_secrets()
     sh = gc.open_by_key(spreadsheet_key)
@@ -254,32 +267,44 @@ def append_to_gsheet(spreadsheet_key: str, worksheet_name: str, row: dict):
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title=worksheet_name, rows=1, cols=len(FIELDNAMES))
         ws.append_row(FIELDNAMES, value_input_option="RAW")
-    if not ws.row_values(1):
+    header = ws.row_values(1)
+    if not header:
         ws.append_row(FIELDNAMES, value_input_option="RAW")
-    ws.append_row([row.get(k, "") for k in FIELDNAMES], value_input_option="USER_ENTERED")
+    values = [row.get(k, "") for k in FIELDNAMES]
+    ws.append_row(values, value_input_option="USER_ENTERED")
 
-# ================================================================
+def log_to_sheets(row: dict):
+    logs_sheet_id = st.secrets.get("LOGS_SHEET_ID", "")
+    if not logs_sheet_id:
+        return False, "Falta 'LOGS_SHEET_ID' en Secrets."
+    if not _gspread_ready:
+        return False, "Faltan dependencias gspread/google-auth."
+    try:
+        append_to_gsheet(logs_sheet_id, "logs", row)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+# =========================================================
 # INTERFAZ
-# ================================================================
+# =========================================================
 st.set_page_config(page_title="Cálculo de porte (camión)", layout="wide")
 st.title("🚚 Cálculo de porte por ruta (HERE)")
 
 api_key = get_api_key()
 if not api_key:
-    st.warning("Configura tu HERE_API_KEY en **st.secrets** o como variable de entorno HERE_API_KEY.")
-
-# Cargar configuración remota (silencioso si no está disponible)
-REMOTE_CFG = get_remote_config()
+    st.warning("Configura tu HERE_API_KEY en **st.secrets** o variable de entorno HERE_API_KEY.")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
-    st.caption(f"📍 Origen fijo: {DEFAULT_ORIGIN_ADDRESS}")
 
-    # Coordenadas del origen verificadas manualmente — nunca se geocodifica
-    # para evitar que HERE lo resuelva a un punto incorrecto.
-    origin_lat = DEFAULT_ORIGIN_LAT
-    origin_lon = DEFAULT_ORIGIN_LON
-    origin_address = DEFAULT_ORIGIN_ADDRESS
+    st.subheader("Origen (fijo)")
+    st.text_input("Dirección de origen", value=ORIGIN_ADDRESS, disabled=True)
+    col_o1, col_o2 = st.columns(2)
+    with col_o1:
+        st.number_input("Origen lat", value=ORIGIN_LAT, format="%.6f", disabled=True)
+    with col_o2:
+        st.number_input("Origen lon", value=ORIGIN_LON, format="%.6f", disabled=True)
 
     st.markdown("---")
     st.subheader("Destino")
@@ -289,60 +314,52 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("Tarifas")
-    # Usar valores remotos si están disponibles, si no los hardcodeados
+    if REMOTE_CFG:
+        st.caption("Valores por defecto cargados desde la hoja de control. Puedes ajustarlos solo para este cálculo.")
     col_a, col_b = st.columns(2)
     with col_a:
-        z1 = st.number_input("Zona 1 (km)", value=cfg_int(REMOTE_CFG, "zona_1_km", ZONA_1_KM), step=1)
-        z2 = st.number_input("Zona 2 (km)", value=cfg_int(REMOTE_CFG, "zona_2_km", ZONA_2_KM), step=1)
+        z1 = st.number_input("Zona 1 (km)", value=ZONA_1_KM, step=1)
+        z2 = st.number_input("Zona 2 (km)", value=ZONA_2_KM, step=1)
     with col_b:
-        z3 = st.number_input("Zona 3 (km)", value=cfg_int(REMOTE_CFG, "zona_3_km", ZONA_3_KM), step=1)
-        z4 = st.number_input("Zona 4 (km)", value=cfg_int(REMOTE_CFG, "zona_4_km", ZONA_4_KM), step=1)
+        z3 = st.number_input("Zona 3 (km)", value=ZONA_3_KM, step=1)
+        z4 = st.number_input("Zona 4 (km)", value=ZONA_4_KM, step=1)
 
-    p1 = st.number_input("Precio Zona 1 (€)", value=cfg_int(REMOTE_CFG, "precio_z1", PRECIO_ZONA_1), step=1)
-    p2 = st.number_input("Precio Zona 2 (€)", value=cfg_int(REMOTE_CFG, "precio_z2", PRECIO_ZONA_2), step=1)
-    p3 = st.number_input("Precio Zona 3 (€)", value=cfg_int(REMOTE_CFG, "precio_z3", PRECIO_ZONA_3), step=1)
-    p4 = st.number_input("Precio Zona 4 (€)", value=cfg_int(REMOTE_CFG, "precio_z4", PRECIO_ZONA_4), step=1)
-    pextra = st.number_input("€/km extra", value=cfg_float(REMOTE_CFG, "precio_km_extra", float(PRECIO_POR_KM_EXTRA)), step=0.1)
+    p1 = st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1)
+    p2 = st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1)
+    p3 = st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1)
+    p4 = st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1)
+    pextra = st.number_input("€ por km extra (a partir de Zona 4)", value=float(PRECIO_POR_KM_EXTRA), step=0.1)
 
-    if REMOTE_CFG:
-        st.caption("✅ Tarifas cargadas desde Google Sheets")
+    ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM = int(z1), int(z2), int(z3), int(z4)
+    PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4, PRECIO_POR_KM_EXTRA = (
+        int(p1), int(p2), int(p3), int(p4), float(pextra)
+    )
 
     st.markdown("---")
-    st.subheader("Registro en CSV")
-    log_csv = st.checkbox("Registrar cálculos en CSV", value=True)
-    csv_path = st.text_input("Ruta del CSV", value="logs/calculos_portes.csv")
+    logs_ok = bool(st.secrets.get("LOGS_SHEET_ID", ""))
+    if logs_ok:
+        st.caption("📝 Los cálculos se registran automáticamente en Google Sheets.")
+    else:
+        st.caption("⚠️ Registro en Sheets desactivado: falta 'LOGS_SHEET_ID' en Secrets.")
 
-    st.markdown("---")
-    st.subheader("Subir a Google Sheets")
-    gs_enable = st.checkbox("Activar subida a Google Sheets", value=False)
-    spreadsheet_key = st.text_input(
-        "Spreadsheet key (ID)",
-        value=REMOTE_CFG.get("spreadsheet_key", "")
-    )
-    worksheet_name = st.text_input(
-        "Nombre de hoja (worksheet)",
-        value=REMOTE_CFG.get("worksheet_name", "logs")
-    )
+    if REMOTE_CONTROL_ID:
+        with st.expander("🔧 Configuración remota (debug)"):
+            st.write("CONTROL_SHEET_ID:", REMOTE_CONTROL_ID)
+            st.json(REMOTE_CFG)
 
     go = st.button("Calcular ruta y precio", type="primary")
 
-# ================================================================
-# SESSION STATE — los resultados persisten entre recargas
-# ================================================================
-if "resultado" not in st.session_state:
-    st.session_state.resultado = None
+map_col, info_col = st.columns([2, 1])
 
 if go:
     if not api_key:
-        st.error("Falta HERE_API_KEY.")
+        st.error("Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno.")
         st.stop()
 
     with st.spinner("Geocodificando dirección de destino..."):
         try:
             dlat, dlon, dtitle, dacc_lat, dacc_lon = geocode_address(
-                dest_address, api_key,
-                postal_code=dest_postal or None,
-                city=dest_city or None
+                dest_address, api_key, postal_code=dest_postal or None, city=dest_city or None
             )
             dest = (dacc_lat, dacc_lon, dtitle)
         except Exception as e:
@@ -352,7 +369,7 @@ if go:
     with st.spinner("Calculando ruta para camión..."):
         try:
             coords, length_m, duration_s = truck_route(
-                (origin_lat, origin_lon), (dest[0], dest[1]), api_key
+                (ORIGIN_LAT, ORIGIN_LON), (dest[0], dest[1]), api_key
             )
         except Exception as e:
             st.error(f"Error calculando ruta: {e}")
@@ -360,17 +377,13 @@ if go:
 
     distancia_km = round(length_m / 1000.0, 2)
     dur = human_duration(duration_s)
-    price = compute_tariff(
-        distancia_km,
-        int(z1), int(z2), int(z3), int(z4),
-        int(p1), int(p2), int(p3), int(p4), float(pextra)
-    )
+    price = compute_tariff(distancia_km)
 
     row = {
         "timestamp_iso": madrid_now_iso(),
-        "origin_address": origin_address,
-        "origin_lat": origin_lat,
-        "origin_lon": origin_lon,
+        "origin_address": ORIGIN_ADDRESS,
+        "origin_lat": ORIGIN_LAT,
+        "origin_lon": ORIGIN_LON,
         "dest_input_address": dest_address,
         "dest_input_postal": dest_postal,
         "dest_input_city": dest_city,
@@ -381,104 +394,61 @@ if go:
         "duration_seconds": int(duration_s),
         "duration_human": dur,
         "price_eur": round(price, 2),
-        "zona_1_km": int(z1), "zona_2_km": int(z2), "zona_3_km": int(z3), "zona_4_km": int(z4),
-        "precio_z1": int(p1), "precio_z2": int(p2), "precio_z3": int(p3), "precio_z4": int(p4),
-        "precio_km_extra": float(pextra),
-        "truckHeight": 4, "truckWidth": 2.5, "truckLength": 10,
-        "truckWeight": 16000, "truckAxleCount": 2, "truckType": "straight",
+        "zona_1_km": ZONA_1_KM, "zona_2_km": ZONA_2_KM, "zona_3_km": ZONA_3_KM, "zona_4_km": ZONA_4_KM,
+        "precio_z1": PRECIO_ZONA_1, "precio_z2": PRECIO_ZONA_2, "precio_z3": PRECIO_ZONA_3, "precio_z4": PRECIO_ZONA_4,
+        "precio_km_extra": PRECIO_POR_KM_EXTRA,
+        "truck_height": TRUCK_PARAMS.get("truck[height]"),
+        "truck_width": TRUCK_PARAMS.get("truck[width]"),
+        "truck_length": TRUCK_PARAMS.get("truck[length]"),
+        "truck_gross_weight": TRUCK_PARAMS.get("truck[grossWeight]"),
+        "truck_axle_count": TRUCK_PARAMS.get("truck[axleCount]"),
+        "truck_type": TRUCK_PARAMS.get("truck[type]"),
     }
 
-    # Guardar en session_state para que persista
-    st.session_state.resultado = {
+    # Registro automático (una sola vez, en el momento del cálculo)
+    log_ok, log_err = log_to_sheets(row)
+
+    # Persistimos el resultado para que sobreviva a los reruns del mapa
+    st.session_state["result"] = {
         "dest": dest,
         "coords": coords,
         "distancia_km": distancia_km,
         "dur": dur,
         "price": price,
-        "row": row,
-        "origin_lat": origin_lat,
-        "origin_lon": origin_lon,
-        "origin_address": origin_address,
-        "z1": int(z1), "z2": int(z2), "z3": int(z3), "z4": int(z4),
-        "p1": int(p1), "p2": int(p2), "p3": int(p3), "p4": int(p4),
-        "pextra": float(pextra),
+        "log_ok": log_ok,
+        "log_err": log_err,
     }
 
-    # Logs (solo se ejecutan una vez al calcular, no en cada recarga)
-    if log_csv:
-        try:
-            log_to_csv(csv_path, row)
-        except Exception as e:
-            st.warning(f"No se pudo registrar en CSV: {e}")
+result = st.session_state.get("result")
 
-    if gs_enable:
-        if not _gspread_ready:
-            st.error("Faltan dependencias gspread/google-auth.")
-        elif not spreadsheet_key.strip():
-            st.error("Indica el Spreadsheet key (ID).")
-        else:
-            try:
-                append_to_gsheet(spreadsheet_key.strip(), worksheet_name.strip() or "logs", row)
-                st.success("✅ Fila añadida a Google Sheets")
-            except Exception as e:
-                st.warning(f"No se pudo subir a Google Sheets: {e}")
-
-# ================================================================
-# RENDERIZADO — usa session_state si hay resultado, si no muestra mapa vacío
-# ================================================================
-map_col, info_col = st.columns([2, 1])
-res = st.session_state.resultado
-
-if res:
+if result:
     with info_col:
         st.subheader("Resultado")
-        st.metric("Distancia (km)", res["distancia_km"])
-        st.metric("Duración estimada", res["dur"])
-        st.metric("Precio (€)", f"{res['price']:.2f} €")
-        st.caption(f"📍 Destino: **{res['dest'][2]}**")
-        st.caption(f"🏭 Origen: **{res['origin_address']}**")
-        if log_csv and go:
-            st.success(f"✅ Guardado en CSV: {csv_path}")
+        st.metric("Distancia (km)", result["distancia_km"])
+        st.metric("Duración", result["dur"])
+        st.metric("Precio (€)", f"{result['price']:.2f}")
+        st.caption(f"Destino: **{result['dest'][2]}**")
+        st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
+
+        if result["log_ok"]:
+            st.success("Registrado en Google Sheets ✅")
+        elif result["log_err"]:
+            st.warning(f"No se pudo registrar en Sheets: {result['log_err']}")
 
     with map_col:
-        m = Map(location=[res["origin_lat"], res["origin_lon"]], zoom_start=12, control_scale=True)
-        add_zone_circles(
-            m, res["origin_lat"], res["origin_lon"],
-            res["z1"], res["z2"], res["z3"], res["z4"],
-            res["p1"], res["p2"], res["p3"], res["p4"]
-        )
-        Marker(
-            [res["origin_lat"], res["origin_lon"]],
-            tooltip="Almacén (origen)", icon=folium.Icon(color="blue")
-        ).add_to(m)
-        Marker(
-            [res["dest"][0], res["dest"][1]],
-            tooltip=res["dest"][2], icon=folium.Icon(color="red")
-        ).add_to(m)
-        PolyLine(locations=res["coords"], weight=5, opacity=0.8).add_to(m)
-        m.get_root().html.add_child(Element(
-            legend_html(res["z1"], res["z2"], res["z3"], res["z4"],
-                        res["p1"], res["p2"], res["p3"], res["p4"], res["pextra"])
-        ))
+        m = Map(location=[ORIGIN_LAT, ORIGIN_LON], zoom_start=12, control_scale=True)
+        add_zone_circles(m, ORIGIN_LAT, ORIGIN_LON)
+        Marker([ORIGIN_LAT, ORIGIN_LON], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
+        Marker([result["dest"][0], result["dest"][1]], tooltip=result["dest"][2], icon=folium.Icon(color="red")).add_to(m)
+        PolyLine(locations=result["coords"], weight=5, opacity=0.8).add_to(m)
+        m.get_root().html.add_child(Element(legend_html()))
         st_folium(m, width=None, height=600)
-
 else:
     with map_col:
-        m = Map(location=[DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON], zoom_start=12, control_scale=True)
-        add_zone_circles(
-            m, DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON,
-            ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
-            PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4
-        )
-        Marker(
-            [DEFAULT_ORIGIN_LAT, DEFAULT_ORIGIN_LON],
-            tooltip="Almacén (origen)", icon=folium.Icon(color="blue")
-        ).add_to(m)
-        m.get_root().html.add_child(Element(legend_html(
-            ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM,
-            PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4,
-            PRECIO_POR_KM_EXTRA
-        )))
+        m = Map(location=[ORIGIN_LAT, ORIGIN_LON], zoom_start=12, control_scale=True)
+        add_zone_circles(m, ORIGIN_LAT, ORIGIN_LON)
+        Marker([ORIGIN_LAT, ORIGIN_LON], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
+        m.get_root().html.add_child(Element(legend_html()))
         st_folium(m, width=None, height=600)
 
     with info_col:
