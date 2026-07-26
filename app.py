@@ -354,7 +354,7 @@ with st.sidebar:
     st.markdown("---")
     logs_ok = bool(st.secrets.get("LOGS_SHEET_ID", ""))
     if logs_ok:
-        st.caption("📝 Los cálculos se registran automáticamente en Google Sheets.")
+        st.caption("📝 Tras calcular, podrás confirmar el guardado en Google Sheets con un botón.")
     else:
         st.caption("⚠️ Registro en Sheets desactivado: falta 'LOGS_SHEET_ID' en Secrets.")
 
@@ -427,10 +427,8 @@ if go:
         "truck_type": TRUCK_PARAMS.get("truck[type]"),
     }
 
-    # Registro automático (una sola vez, en el momento del cálculo)
-    log_ok, log_err = log_to_sheets(row)
-
-    # Persistimos el resultado para que sobreviva a los reruns del mapa
+    # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
+    # usuario lo confirme con el botón "Guardar porte en Google Sheets".
     st.session_state["result"] = {
         "cliente_nombre": cliente_nombre.strip(),
         "operario_codigo": operario_codigo.strip(),
@@ -439,8 +437,10 @@ if go:
         "distancia_km": distancia_km,
         "dur": dur,
         "price": price,
-        "log_ok": log_ok,
-        "log_err": log_err,
+        "row": row,
+        "saved": False,
+        "log_ok": None,
+        "log_err": None,
     }
 
 result = st.session_state.get("result")
@@ -456,10 +456,20 @@ if result:
         st.caption(f"Destino: **{result['dest'][2]}**")
         st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
 
-        if result["log_ok"]:
-            st.success("Registrado en Google Sheets ✅")
-        elif result["log_err"]:
-            st.warning(f"No se pudo registrar en Sheets: {result['log_err']}")
+        st.markdown("---")
+        if result["saved"]:
+            st.success("✅ Porte guardado en Google Sheets.")
+        else:
+            if st.button("💾 Confirmar y guardar porte", type="primary"):
+                log_ok, log_err = log_to_sheets(result["row"])
+                result["log_ok"] = log_ok
+                result["log_err"] = log_err
+                result["saved"] = log_ok
+                st.session_state["result"] = result
+                st.rerun()
+
+            if result["log_ok"] is False and result["log_err"]:
+                st.warning(f"No se pudo registrar en Sheets: {result['log_err']}")
 
     with map_col:
         m = Map(location=[ORIGIN_LAT, ORIGIN_LON], zoom_start=12, control_scale=True)
