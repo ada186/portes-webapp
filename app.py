@@ -313,27 +313,29 @@ with st.sidebar:
     dest_city = st.text_input("Población (opcional)", value="Madrid")
 
     st.markdown("---")
-    st.subheader("Tarifas")
+    st.subheader("Tarifas (solo lectura)")
     if REMOTE_CFG:
-        st.caption("Valores por defecto cargados desde la hoja de control. Puedes ajustarlos solo para este cálculo.")
+        st.caption("Cargadas desde la hoja de control. Para cambiarlas, edita esa hoja, no la app.")
+    else:
+        st.caption("⚠️ No se pudo leer la hoja de control: se están usando los valores por defecto del código.")
+
     col_a, col_b = st.columns(2)
     with col_a:
-        z1 = st.number_input("Zona 1 (km)", value=ZONA_1_KM, step=1)
-        z2 = st.number_input("Zona 2 (km)", value=ZONA_2_KM, step=1)
+        st.number_input("Zona 1 (km)", value=ZONA_1_KM, step=1, disabled=True)
+        st.number_input("Zona 2 (km)", value=ZONA_2_KM, step=1, disabled=True)
     with col_b:
-        z3 = st.number_input("Zona 3 (km)", value=ZONA_3_KM, step=1)
-        z4 = st.number_input("Zona 4 (km)", value=ZONA_4_KM, step=1)
+        st.number_input("Zona 3 (km)", value=ZONA_3_KM, step=1, disabled=True)
+        st.number_input("Zona 4 (km)", value=ZONA_4_KM, step=1, disabled=True)
 
-    p1 = st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1)
-    p2 = st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1)
-    p3 = st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1)
-    p4 = st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1)
-    pextra = st.number_input("€ por km extra (a partir de Zona 4)", value=float(PRECIO_POR_KM_EXTRA), step=0.1)
+    st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1, disabled=True)
+    st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1, disabled=True)
+    st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1, disabled=True)
+    st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1, disabled=True)
+    st.number_input("€ por km extra (a partir de Zona 4)", value=float(PRECIO_POR_KM_EXTRA), step=0.1, disabled=True)
 
-    ZONA_1_KM, ZONA_2_KM, ZONA_3_KM, ZONA_4_KM = int(z1), int(z2), int(z3), int(z4)
-    PRECIO_ZONA_1, PRECIO_ZONA_2, PRECIO_ZONA_3, PRECIO_ZONA_4, PRECIO_POR_KM_EXTRA = (
-        int(p1), int(p2), int(p3), int(p4), float(pextra)
-    )
+    # Nota: ZONA_*_KM y PRECIO_* ya NO se reasignan desde el sidebar.
+    # Los únicos valores que se usan en el cálculo son los que vienen de
+    # REMOTE_CFG (hoja de control) o, en su defecto, las constantes del código.
 
     st.markdown("---")
     logs_ok = bool(st.secrets.get("LOGS_SHEET_ID", ""))
