@@ -73,6 +73,7 @@ TRUCK_PARAMS = {
 
 FIELDNAMES = [
     "timestamp_iso",
+    "cliente_nombre", "operario_codigo",
     "origin_address", "origin_lat", "origin_lon",
     "dest_input_address", "dest_input_postal", "dest_input_city",
     "dest_geocoded_title", "dest_lat", "dest_lon",
@@ -315,6 +316,11 @@ with st.sidebar:
         st.number_input("Origen lon", value=ORIGIN_LON, format="%.6f", disabled=True)
 
     st.markdown("---")
+    st.subheader("Datos del porte")
+    cliente_nombre = st.text_input("Nombre del cliente", value="")
+    operario_codigo = st.text_input("Código de operario", value="")
+
+    st.markdown("---")
     st.subheader("Destino")
     dest_address = st.text_input("Dirección destino", value="Calle Alcalá 100")
     dest_postal = st.text_input("Código postal (opcional)", value="")
@@ -366,6 +372,10 @@ if go:
         st.error("Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno.")
         st.stop()
 
+    if not cliente_nombre.strip() or not operario_codigo.strip():
+        st.error("Introduce el nombre del cliente y el código de operario antes de calcular.")
+        st.stop()
+
     with st.spinner("Geocodificando dirección de destino..."):
         try:
             dlat, dlon, dtitle, dacc_lat, dacc_lon = geocode_address(
@@ -391,6 +401,8 @@ if go:
 
     row = {
         "timestamp_iso": madrid_now_iso(),
+        "cliente_nombre": cliente_nombre.strip(),
+        "operario_codigo": operario_codigo.strip(),
         "origin_address": ORIGIN_ADDRESS,
         "origin_lat": ORIGIN_LAT,
         "origin_lon": ORIGIN_LON,
@@ -420,6 +432,8 @@ if go:
 
     # Persistimos el resultado para que sobreviva a los reruns del mapa
     st.session_state["result"] = {
+        "cliente_nombre": cliente_nombre.strip(),
+        "operario_codigo": operario_codigo.strip(),
         "dest": dest,
         "coords": coords,
         "distancia_km": distancia_km,
@@ -437,6 +451,8 @@ if result:
         st.metric("Distancia (km)", result["distancia_km"])
         st.metric("Duración", result["dur"])
         st.metric("Precio (€)", f"{result['price']:.2f}")
+        st.caption(f"Cliente: **{result['cliente_nombre']}**")
+        st.caption(f"Operario: **{result['operario_codigo']}**")
         st.caption(f"Destino: **{result['dest'][2]}**")
         st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
 
