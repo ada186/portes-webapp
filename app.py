@@ -89,8 +89,8 @@ FIELDNAMES = [
     "precio_z1", "precio_z2", "precio_z3", "precio_z4", "precio_km_extra",
     "truck_height", "truck_width", "truck_length", "truck_gross_weight",
     "truck_axle_count", "truck_type",
-    # "seccion" va al final para no descolocar las filas ya guardadas.
-    "seccion",
+    # Las columnas nuevas van al final para no descolocar las filas ya guardadas.
+    "seccion", "fecha_porte",
 ]
 
 # =========================================================
@@ -332,6 +332,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Datos del porte")
     seccion = st.radio("Sección", SECCIONES, index=None)
+    fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
 
@@ -391,6 +392,10 @@ if go:
         st.error("Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular.")
         st.stop()
 
+    if not fecha_porte:
+        st.error("Indica la fecha en la que se va a realizar el porte antes de calcular.")
+        st.stop()
+
     if not cliente_nombre.strip() or not operario_codigo.strip():
         st.error("Introduce el nombre del cliente y el código de operario antes de calcular.")
         st.stop()
@@ -445,12 +450,14 @@ if go:
         "truck_axle_count": TRUCK_PARAMS.get("truck[axleCount]"),
         "truck_type": TRUCK_PARAMS.get("truck[type]"),
         "seccion": seccion,
+        "fecha_porte": fecha_porte.isoformat(),
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
     # usuario lo confirme con el botón "Guardar porte en Google Sheets".
     st.session_state["result"] = {
         "seccion": seccion,
+        "fecha_porte": fecha_porte,
         "cliente_nombre": cliente_nombre.strip(),
         "operario_codigo": operario_codigo.strip(),
         "dest": dest,
@@ -473,6 +480,7 @@ if result:
         st.metric("Duración", result["dur"])
         st.metric("Precio (€)", f"{result['price']:.2f}")
         st.caption(f"Sección: **{result['seccion']}**")
+        st.caption(f"Fecha del porte: **{result['fecha_porte']:%d/%m/%Y}**")
         st.caption(f"Cliente: **{result['cliente_nombre']}**")
         st.caption(f"Operario: **{result['operario_codigo']}**")
         st.caption(f"Destino: **{result['dest'][2]}**")
