@@ -42,11 +42,17 @@ ZONA_1_KM = 3
 ZONA_2_KM = 5
 ZONA_3_KM = 10
 ZONA_4_KM = 20
+ZONA_5_KM = 40
+ZONA_6_KM = 50
+ZONA_7_KM = 70
 
 PRECIO_ZONA_1 = 25
 PRECIO_ZONA_2 = 35
 PRECIO_ZONA_3 = 50
 PRECIO_ZONA_4 = 70
+PRECIO_ZONA_5 = 90
+PRECIO_ZONA_6 = 100
+PRECIO_ZONA_7 = 120
 PRECIO_POR_KM_EXTRA = 1
 
 # Dimensiones reales del camión, en las unidades "humanas" (metros/kg) que
@@ -91,6 +97,8 @@ FIELDNAMES = [
     "truck_axle_count", "truck_type",
     # Las columnas nuevas van al final para no descolocar las filas ya guardadas.
     "seccion", "fecha_porte", "anotaciones",
+    "zona_5_km", "zona_6_km", "zona_7_km",
+    "precio_z5", "precio_z6", "precio_z7",
 ]
 
 # =========================================================
@@ -147,10 +155,16 @@ ZONA_1_KM = cfg_int(REMOTE_CFG, "ZONA_1_KM", ZONA_1_KM)
 ZONA_2_KM = cfg_int(REMOTE_CFG, "ZONA_2_KM", ZONA_2_KM)
 ZONA_3_KM = cfg_int(REMOTE_CFG, "ZONA_3_KM", ZONA_3_KM)
 ZONA_4_KM = cfg_int(REMOTE_CFG, "ZONA_4_KM", ZONA_4_KM)
+ZONA_5_KM = cfg_int(REMOTE_CFG, "ZONA_5_KM", ZONA_5_KM)
+ZONA_6_KM = cfg_int(REMOTE_CFG, "ZONA_6_KM", ZONA_6_KM)
+ZONA_7_KM = cfg_int(REMOTE_CFG, "ZONA_7_KM", ZONA_7_KM)
 PRECIO_ZONA_1 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_1", PRECIO_ZONA_1)
 PRECIO_ZONA_2 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_2", PRECIO_ZONA_2)
 PRECIO_ZONA_3 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_3", PRECIO_ZONA_3)
 PRECIO_ZONA_4 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_4", PRECIO_ZONA_4)
+PRECIO_ZONA_5 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_5", PRECIO_ZONA_5)
+PRECIO_ZONA_6 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_6", PRECIO_ZONA_6)
+PRECIO_ZONA_7 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_7", PRECIO_ZONA_7)
 PRECIO_POR_KM_EXTRA = cfg_float(REMOTE_CFG, "PRECIO_POR_KM_EXTRA", PRECIO_POR_KM_EXTRA)
 
 def get_api_key():
@@ -232,9 +246,15 @@ def compute_tariff(distance_km):
         return PRECIO_ZONA_3
     elif distance_km <= ZONA_4_KM:
         return PRECIO_ZONA_4
+    elif distance_km <= ZONA_5_KM:
+        return PRECIO_ZONA_5
+    elif distance_km <= ZONA_6_KM:
+        return PRECIO_ZONA_6
+    elif distance_km <= ZONA_7_KM:
+        return PRECIO_ZONA_7
     else:
-        km_extra = distance_km - ZONA_4_KM
-        return PRECIO_ZONA_4 + km_extra * PRECIO_POR_KM_EXTRA
+        km_extra = distance_km - ZONA_7_KM
+        return PRECIO_ZONA_7 + km_extra * PRECIO_POR_KM_EXTRA
 
 def human_duration(seconds: int) -> str:
     m, s = divmod(int(seconds), 60)
@@ -254,6 +274,12 @@ def add_zone_circles(m, center_lat, center_lon):
            fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €").add_to(m)
     Circle(radius=ZONA_4_KM * 1000, location=[center_lat, center_lon], color="purple",
            fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €").add_to(m)
+    Circle(radius=ZONA_5_KM * 1000, location=[center_lat, center_lon], color="red",
+           fill=True, fill_opacity=0.03, tooltip=f"Zona 5 (≤{ZONA_5_KM} km): {PRECIO_ZONA_5} €").add_to(m)
+    Circle(radius=ZONA_6_KM * 1000, location=[center_lat, center_lon], color="brown",
+           fill=True, fill_opacity=0.03, tooltip=f"Zona 6 (≤{ZONA_6_KM} km): {PRECIO_ZONA_6} €").add_to(m)
+    Circle(radius=ZONA_7_KM * 1000, location=[center_lat, center_lon], color="gray",
+           fill=True, fill_opacity=0.03, tooltip=f"Zona 7 (≤{ZONA_7_KM} km): {PRECIO_ZONA_7} €").add_to(m)
 
 def legend_html():
     return f"""
@@ -264,7 +290,10 @@ def legend_html():
     Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €<br>
     Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €<br>
     Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €<br>
-    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_4_KM} km
+    Zona 5 (≤{ZONA_5_KM} km): {PRECIO_ZONA_5} €<br>
+    Zona 6 (≤{ZONA_6_KM} km): {PRECIO_ZONA_6} €<br>
+    Zona 7 (≤{ZONA_7_KM} km): {PRECIO_ZONA_7} €<br>
+    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_7_KM} km
     </div>
     """
 
@@ -357,15 +386,21 @@ with st.sidebar:
     with col_a:
         st.number_input("Zona 1 (km)", value=ZONA_1_KM, step=1, disabled=True)
         st.number_input("Zona 2 (km)", value=ZONA_2_KM, step=1, disabled=True)
-    with col_b:
         st.number_input("Zona 3 (km)", value=ZONA_3_KM, step=1, disabled=True)
         st.number_input("Zona 4 (km)", value=ZONA_4_KM, step=1, disabled=True)
+    with col_b:
+        st.number_input("Zona 5 (km)", value=ZONA_5_KM, step=1, disabled=True)
+        st.number_input("Zona 6 (km)", value=ZONA_6_KM, step=1, disabled=True)
+        st.number_input("Zona 7 (km)", value=ZONA_7_KM, step=1, disabled=True)
 
     st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1, disabled=True)
     st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1, disabled=True)
     st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1, disabled=True)
     st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1, disabled=True)
-    st.number_input("€ por km extra (a partir de Zona 4)", value=float(PRECIO_POR_KM_EXTRA), step=0.1, disabled=True)
+    st.number_input("Precio Zona 5 (€)", value=PRECIO_ZONA_5, step=1, disabled=True)
+    st.number_input("Precio Zona 6 (€)", value=PRECIO_ZONA_6, step=1, disabled=True)
+    st.number_input("Precio Zona 7 (€)", value=PRECIO_ZONA_7, step=1, disabled=True)
+    st.number_input("€ por km extra (a partir de Zona 7)", value=float(PRECIO_POR_KM_EXTRA), step=0.1, disabled=True)
 
     # Nota: ZONA_*_KM y PRECIO_* ya NO se reasignan desde el sidebar.
     # Los únicos valores que se usan en el cálculo son los que vienen de
@@ -460,6 +495,8 @@ if go:
         "seccion": seccion,
         "fecha_porte": fecha_porte.isoformat(),
         "anotaciones": anotaciones.strip(),
+        "zona_5_km": ZONA_5_KM, "zona_6_km": ZONA_6_KM, "zona_7_km": ZONA_7_KM,
+        "precio_z5": PRECIO_ZONA_5, "precio_z6": PRECIO_ZONA_6, "precio_z7": PRECIO_ZONA_7,
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
