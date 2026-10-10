@@ -342,7 +342,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("Destino")
-    dest_address = st.text_input("Dirección destino", value="Calle Alcalá 100")
+    dest_address = st.text_input("Dirección destino", value="")
     dest_postal = st.text_input("Código postal (opcional)", value="")
     dest_city = st.text_input("Población (opcional)", value="Madrid")
 
@@ -402,6 +402,10 @@ if go:
 
     if not cliente_nombre.strip() or not operario_codigo.strip():
         st.error("Introduce el nombre del cliente y el código de operario antes de calcular.")
+        st.stop()
+
+    if not dest_address.strip():
+        st.error("Introduce la dirección de destino antes de calcular.")
         st.stop()
 
     with st.spinner("Geocodificando dirección de destino..."):
