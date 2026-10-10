@@ -71,6 +71,13 @@ TRUCK_PARAMS = {
     "truck[type]": "straight",
 }
 
+# =========================================================
+# SECCIONES
+# Cada porte se etiqueta con la sección que lo origina. Todos se guardan
+# en la misma hoja "logs"; la columna "seccion" permite filtrarlos.
+# =========================================================
+SECCIONES = ["Exposición Vital Aza", "Almacén Ezequiel Solana"]
+
 FIELDNAMES = [
     "timestamp_iso",
     "cliente_nombre", "operario_codigo",
@@ -82,6 +89,8 @@ FIELDNAMES = [
     "precio_z1", "precio_z2", "precio_z3", "precio_z4", "precio_km_extra",
     "truck_height", "truck_width", "truck_length", "truck_gross_weight",
     "truck_axle_count", "truck_type",
+    # "seccion" va al final para no descolocar las filas ya guardadas.
+    "seccion",
 ]
 
 # =========================================================
@@ -279,6 +288,11 @@ def append_to_gsheet(spreadsheet_key: str, worksheet_name: str, row: dict):
     header = ws.row_values(1)
     if not header:
         ws.append_row(FIELDNAMES, value_input_option="RAW")
+    elif len(header) < len(FIELDNAMES) and header == FIELDNAMES[:len(header)]:
+        # Hoja creada antes de añadir columnas nuevas: se amplía la cabecera.
+        if ws.col_count < len(FIELDNAMES):
+            ws.add_cols(len(FIELDNAMES) - ws.col_count)
+        ws.update(values=[FIELDNAMES], range_name="A1", value_input_option="RAW")
     values = [row.get(k, "") for k in FIELDNAMES]
     ws.append_row(values, value_input_option="USER_ENTERED")
 
@@ -317,6 +331,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("Datos del porte")
+    seccion = st.radio("Sección", SECCIONES, index=None)
     cliente_nombre = st.text_input("Nombre del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
 
@@ -372,6 +387,10 @@ if go:
         st.error("Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno.")
         st.stop()
 
+    if not seccion:
+        st.error("Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular.")
+        st.stop()
+
     if not cliente_nombre.strip() or not operario_codigo.strip():
         st.error("Introduce el nombre del cliente y el código de operario antes de calcular.")
         st.stop()
@@ -425,11 +444,13 @@ if go:
         "truck_gross_weight": TRUCK_PARAMS.get("truck[grossWeight]"),
         "truck_axle_count": TRUCK_PARAMS.get("truck[axleCount]"),
         "truck_type": TRUCK_PARAMS.get("truck[type]"),
+        "seccion": seccion,
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
     # usuario lo confirme con el botón "Guardar porte en Google Sheets".
     st.session_state["result"] = {
+        "seccion": seccion,
         "cliente_nombre": cliente_nombre.strip(),
         "operario_codigo": operario_codigo.strip(),
         "dest": dest,
@@ -451,6 +472,7 @@ if result:
         st.metric("Distancia (km)", result["distancia_km"])
         st.metric("Duración", result["dur"])
         st.metric("Precio (€)", f"{result['price']:.2f}")
+        st.caption(f"Sección: **{result['seccion']}**")
         st.caption(f"Cliente: **{result['cliente_nombre']}**")
         st.caption(f"Operario: **{result['operario_codigo']}**")
         st.caption(f"Destino: **{result['dest'][2]}**")
