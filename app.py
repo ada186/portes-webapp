@@ -90,7 +90,7 @@ FIELDNAMES = [
     "truck_height", "truck_width", "truck_length", "truck_gross_weight",
     "truck_axle_count", "truck_type",
     # Las columnas nuevas van al final para no descolocar las filas ya guardadas.
-    "seccion", "fecha_porte",
+    "seccion", "fecha_porte", "anotaciones",
 ]
 
 # =========================================================
@@ -335,6 +335,10 @@ with st.sidebar:
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
+    anotaciones = st.text_area(
+        "Anotaciones (opcional)", value="",
+        placeholder="Ej.: solo se puede entrar hasta las 12:00",
+    )
 
     st.markdown("---")
     st.subheader("Destino")
@@ -451,6 +455,7 @@ if go:
         "truck_type": TRUCK_PARAMS.get("truck[type]"),
         "seccion": seccion,
         "fecha_porte": fecha_porte.isoformat(),
+        "anotaciones": anotaciones.strip(),
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
@@ -458,6 +463,7 @@ if go:
     st.session_state["result"] = {
         "seccion": seccion,
         "fecha_porte": fecha_porte,
+        "anotaciones": anotaciones.strip(),
         "cliente_nombre": cliente_nombre.strip(),
         "operario_codigo": operario_codigo.strip(),
         "dest": dest,
@@ -485,6 +491,8 @@ if result:
         st.caption(f"Operario: **{result['operario_codigo']}**")
         st.caption(f"Destino: **{result['dest'][2]}**")
         st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
+        if result["anotaciones"]:
+            st.warning(f"📝 Anotaciones: {result['anotaciones']}")
 
         st.markdown("---")
         if result["saved"]:
