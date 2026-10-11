@@ -55,10 +55,11 @@ PRECIO_ZONA_6 = 100
 PRECIO_ZONA_7 = 120
 PRECIO_POR_KM_EXTRA = 1
 
-# Descuento sobre el porte cuando el importe del pedido supera un mínimo.
-# Con el porcentaje a 0 el descuento queda desactivado.
-DESCUENTO_IMPORTE_MINIMO = 0
-DESCUENTO_PORCENTAJE = 0
+# Descuentos sobre el porte según el importe del pedido: tres categorías,
+# cada una con su importe mínimo y su porcentaje. Se aplica la de mayor
+# importe mínimo superado. Con el porcentaje a 0 la categoría queda desactivada.
+NUM_DESCUENTOS = 3
+DESCUENTOS = [(0, 0)] * NUM_DESCUENTOS  # (importe mínimo, porcentaje)
 
 # Dimensiones reales del camión, en las unidades "humanas" (metros/kg) que
 # se usan en el resto de la app. A partir de aquí se convierten a lo que
@@ -172,8 +173,21 @@ PRECIO_ZONA_5 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_5", PRECIO_ZONA_5)
 PRECIO_ZONA_6 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_6", PRECIO_ZONA_6)
 PRECIO_ZONA_7 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_7", PRECIO_ZONA_7)
 PRECIO_POR_KM_EXTRA = cfg_float(REMOTE_CFG, "PRECIO_POR_KM_EXTRA", PRECIO_POR_KM_EXTRA)
-DESCUENTO_IMPORTE_MINIMO = cfg_float(REMOTE_CFG, "DESCUENTO_IMPORTE_MINIMO", DESCUENTO_IMPORTE_MINIMO)
-DESCUENTO_PORCENTAJE = min(max(cfg_float(REMOTE_CFG, "DESCUENTO_PORCENTAJE", DESCUENTO_PORCENTAJE), 0), 100)
+
+def load_descuentos(cfg):
+    descuentos = []
+    for i, (minimo, pct) in enumerate(DESCUENTOS, start=1):
+        if i == 1:
+            # Claves antiguas, de cuando solo había una categoría.
+            minimo = cfg_float(cfg, "DESCUENTO_IMPORTE_MINIMO", minimo)
+            pct = cfg_float(cfg, "DESCUENTO_PORCENTAJE", pct)
+        minimo = cfg_float(cfg, f"DESCUENTO_{i}_IMPORTE_MINIMO", minimo)
+        pct = cfg_float(cfg, f"DESCUENTO_{i}_PORCENTAJE", pct)
+        descuentos.append((minimo, min(max(pct, 0), 100)))
+    return descuentos
+
+DESCUENTOS = load_descuentos(REMOTE_CFG)
+DESCUENTOS_ACTIVOS = sorted((m, p) for m, p in DESCUENTOS if p > 0)
 
 def get_api_key():
     if "HERE_API_KEY" in st.secrets:
@@ -266,11 +280,13 @@ def compute_tariff(distance_km):
 
 def compute_discount_pct(importe_pedido):
     """Porcentaje de descuento sobre el porte según el importe del pedido."""
-    if importe_pedido is None or DESCUENTO_PORCENTAJE <= 0:
+    if importe_pedido is None:
         return 0
-    if importe_pedido > DESCUENTO_IMPORTE_MINIMO:
-        return DESCUENTO_PORCENTAJE
-    return 0
+    pct = 0
+    for minimo, porcentaje in DESCUENTOS_ACTIVOS:
+        if importe_pedido > minimo:
+            pct = porcentaje
+    return pct
 
 def human_duration(seconds: int) -> str:
     m, s = divmod(int(seconds), 60)
@@ -383,10 +399,10 @@ with st.sidebar:
     importe_pedido = st.number_input(
         "Importe del pedido (€, opcional)", value=None, min_value=0.0, step=1.0, format="%.2f",
     )
-    if DESCUENTO_PORCENTAJE > 0:
+    if DESCUENTOS_ACTIVOS:
         st.caption(
-            f"Si el pedido supera {DESCUENTO_IMPORTE_MINIMO:g} €, se aplica un "
-            f"{DESCUENTO_PORCENTAJE:g} % de descuento sobre el porte."
+            "Descuento sobre el porte: "
+            + " · ".join(f"más de {m:g} € → {p:g} %" for m, p in DESCUENTOS_ACTIVOS)
         )
     anotaciones = st.text_area(
         "Anotaciones (opcional)", value="",
