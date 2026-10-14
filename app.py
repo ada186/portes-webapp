@@ -38,18 +38,18 @@ ORIGIN_LON = -3.644614746858031
 # TARIFAS POR DEFECTO
 # (se sobreescriben con los valores de la hoja de control si existe)
 # =========================================================
-ZONA_1_KM = 3
-ZONA_2_KM = 5
-ZONA_3_KM = 10
-ZONA_4_KM = 20
-ZONA_5_KM = 40
-ZONA_6_KM = 50
-ZONA_7_KM = 70
+ZONA_1_KM = 0.6
+ZONA_2_KM = 2
+ZONA_3_KM = 3
+ZONA_4_KM = 7
+ZONA_5_KM = 10
+ZONA_6_KM = 20
+ZONA_7_KM = 30
 
-PRECIO_ZONA_1 = 25
-PRECIO_ZONA_2 = 35
-PRECIO_ZONA_3 = 50
-PRECIO_ZONA_4 = 70
+PRECIO_ZONA_1 = 50
+PRECIO_ZONA_2 = 60
+PRECIO_ZONA_3 = 70
+PRECIO_ZONA_4 = 80
 PRECIO_ZONA_5 = 90
 PRECIO_ZONA_6 = 100
 PRECIO_ZONA_7 = 120
@@ -99,6 +99,7 @@ FIELDNAMES = [
     "seccion", "fecha_porte", "anotaciones",
     "zona_5_km", "zona_6_km", "zona_7_km",
     "precio_z5", "precio_z6", "precio_z7",
+    "cliente_telefono",
 ]
 
 # =========================================================
@@ -130,15 +131,22 @@ def load_remote_config(control_sheet_id: str) -> dict:
             cfg[r[0].strip()] = r[1].strip()
     return cfg
 
+def parse_num(value: str) -> float:
+    """Convierte un número de la hoja, aceptando coma decimal ("0,5")."""
+    value = value.strip()
+    if "," in value:
+        value = value.replace(".", "").replace(",", ".")
+    return float(value)
+
 def cfg_int(cfg, key, default):
     try:
-        return int(float(cfg[key]))
+        return int(parse_num(cfg[key]))
     except Exception:
         return default
 
 def cfg_float(cfg, key, default):
     try:
-        return float(cfg[key])
+        return parse_num(cfg[key])
     except Exception:
         return default
 
@@ -151,13 +159,13 @@ if REMOTE_CONTROL_ID:
         st.sidebar.warning(f"No se pudo leer la hoja de control: {e}")
 
 # La hoja de control (si existe) se usa como fuente de los valores por defecto.
-ZONA_1_KM = cfg_int(REMOTE_CFG, "ZONA_1_KM", ZONA_1_KM)
-ZONA_2_KM = cfg_int(REMOTE_CFG, "ZONA_2_KM", ZONA_2_KM)
-ZONA_3_KM = cfg_int(REMOTE_CFG, "ZONA_3_KM", ZONA_3_KM)
-ZONA_4_KM = cfg_int(REMOTE_CFG, "ZONA_4_KM", ZONA_4_KM)
-ZONA_5_KM = cfg_int(REMOTE_CFG, "ZONA_5_KM", ZONA_5_KM)
-ZONA_6_KM = cfg_int(REMOTE_CFG, "ZONA_6_KM", ZONA_6_KM)
-ZONA_7_KM = cfg_int(REMOTE_CFG, "ZONA_7_KM", ZONA_7_KM)
+ZONA_1_KM = cfg_float(REMOTE_CFG, "ZONA_1_KM", ZONA_1_KM)
+ZONA_2_KM = cfg_float(REMOTE_CFG, "ZONA_2_KM", ZONA_2_KM)
+ZONA_3_KM = cfg_float(REMOTE_CFG, "ZONA_3_KM", ZONA_3_KM)
+ZONA_4_KM = cfg_float(REMOTE_CFG, "ZONA_4_KM", ZONA_4_KM)
+ZONA_5_KM = cfg_float(REMOTE_CFG, "ZONA_5_KM", ZONA_5_KM)
+ZONA_6_KM = cfg_float(REMOTE_CFG, "ZONA_6_KM", ZONA_6_KM)
+ZONA_7_KM = cfg_float(REMOTE_CFG, "ZONA_7_KM", ZONA_7_KM)
 PRECIO_ZONA_1 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_1", PRECIO_ZONA_1)
 PRECIO_ZONA_2 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_2", PRECIO_ZONA_2)
 PRECIO_ZONA_3 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_3", PRECIO_ZONA_3)
@@ -267,33 +275,33 @@ def human_duration(seconds: int) -> str:
 
 def add_zone_circles(m, center_lat, center_lon):
     Circle(radius=ZONA_1_KM * 1000, location=[center_lat, center_lon], color="green",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{ZONA_1_KM} km): {PRECIO_ZONA_1} €").add_to(m)
+           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{ZONA_1_KM:g} km): {PRECIO_ZONA_1} €").add_to(m)
     Circle(radius=ZONA_2_KM * 1000, location=[center_lat, center_lon], color="orange",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €").add_to(m)
+           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{ZONA_2_KM:g} km): {PRECIO_ZONA_2} €").add_to(m)
     Circle(radius=ZONA_3_KM * 1000, location=[center_lat, center_lon], color="blue",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €").add_to(m)
+           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{ZONA_3_KM:g} km): {PRECIO_ZONA_3} €").add_to(m)
     Circle(radius=ZONA_4_KM * 1000, location=[center_lat, center_lon], color="purple",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €").add_to(m)
+           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{ZONA_4_KM:g} km): {PRECIO_ZONA_4} €").add_to(m)
     Circle(radius=ZONA_5_KM * 1000, location=[center_lat, center_lon], color="red",
-           fill=True, fill_opacity=0.03, tooltip=f"Zona 5 (≤{ZONA_5_KM} km): {PRECIO_ZONA_5} €").add_to(m)
+           fill=True, fill_opacity=0.03, tooltip=f"Zona 5 (≤{ZONA_5_KM:g} km): {PRECIO_ZONA_5} €").add_to(m)
     Circle(radius=ZONA_6_KM * 1000, location=[center_lat, center_lon], color="brown",
-           fill=True, fill_opacity=0.03, tooltip=f"Zona 6 (≤{ZONA_6_KM} km): {PRECIO_ZONA_6} €").add_to(m)
+           fill=True, fill_opacity=0.03, tooltip=f"Zona 6 (≤{ZONA_6_KM:g} km): {PRECIO_ZONA_6} €").add_to(m)
     Circle(radius=ZONA_7_KM * 1000, location=[center_lat, center_lon], color="gray",
-           fill=True, fill_opacity=0.03, tooltip=f"Zona 7 (≤{ZONA_7_KM} km): {PRECIO_ZONA_7} €").add_to(m)
+           fill=True, fill_opacity=0.03, tooltip=f"Zona 7 (≤{ZONA_7_KM:g} km): {PRECIO_ZONA_7} €").add_to(m)
 
 def legend_html():
     return f"""
     <div style="position: fixed; bottom: 25px; left: 25px; width: 260px;
     border:2px solid #888; background: white; z-index:9999; font-size:14px; padding:8px;">
     <b>Tarifas</b><br>
-    Zona 1 (≤{ZONA_1_KM} km): {PRECIO_ZONA_1} €<br>
-    Zona 2 (≤{ZONA_2_KM} km): {PRECIO_ZONA_2} €<br>
-    Zona 3 (≤{ZONA_3_KM} km): {PRECIO_ZONA_3} €<br>
-    Zona 4 (≤{ZONA_4_KM} km): {PRECIO_ZONA_4} €<br>
-    Zona 5 (≤{ZONA_5_KM} km): {PRECIO_ZONA_5} €<br>
-    Zona 6 (≤{ZONA_6_KM} km): {PRECIO_ZONA_6} €<br>
-    Zona 7 (≤{ZONA_7_KM} km): {PRECIO_ZONA_7} €<br>
-    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_7_KM} km
+    Zona 1 (≤{ZONA_1_KM:g} km): {PRECIO_ZONA_1} €<br>
+    Zona 2 (≤{ZONA_2_KM:g} km): {PRECIO_ZONA_2} €<br>
+    Zona 3 (≤{ZONA_3_KM:g} km): {PRECIO_ZONA_3} €<br>
+    Zona 4 (≤{ZONA_4_KM:g} km): {PRECIO_ZONA_4} €<br>
+    Zona 5 (≤{ZONA_5_KM:g} km): {PRECIO_ZONA_5} €<br>
+    Zona 6 (≤{ZONA_6_KM:g} km): {PRECIO_ZONA_6} €<br>
+    Zona 7 (≤{ZONA_7_KM:g} km): {PRECIO_ZONA_7} €<br>
+    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_7_KM:g} km
     </div>
     """
 
@@ -363,6 +371,7 @@ with st.sidebar:
     seccion = st.radio("Sección", SECCIONES, index=None)
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
+    cliente_telefono = st.text_input("Teléfono del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
     anotaciones = st.text_area(
         "Anotaciones (opcional)", value="",
@@ -384,14 +393,14 @@ with st.sidebar:
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.number_input("Zona 1 (km)", value=ZONA_1_KM, step=1, disabled=True)
-        st.number_input("Zona 2 (km)", value=ZONA_2_KM, step=1, disabled=True)
-        st.number_input("Zona 3 (km)", value=ZONA_3_KM, step=1, disabled=True)
-        st.number_input("Zona 4 (km)", value=ZONA_4_KM, step=1, disabled=True)
+        st.number_input("Zona 1 (km)", value=float(ZONA_1_KM), step=0.1, format="%.1f", disabled=True)
+        st.number_input("Zona 2 (km)", value=float(ZONA_2_KM), step=0.1, format="%.1f", disabled=True)
+        st.number_input("Zona 3 (km)", value=float(ZONA_3_KM), step=0.1, format="%.1f", disabled=True)
+        st.number_input("Zona 4 (km)", value=float(ZONA_4_KM), step=0.1, format="%.1f", disabled=True)
     with col_b:
-        st.number_input("Zona 5 (km)", value=ZONA_5_KM, step=1, disabled=True)
-        st.number_input("Zona 6 (km)", value=ZONA_6_KM, step=1, disabled=True)
-        st.number_input("Zona 7 (km)", value=ZONA_7_KM, step=1, disabled=True)
+        st.number_input("Zona 5 (km)", value=float(ZONA_5_KM), step=0.1, format="%.1f", disabled=True)
+        st.number_input("Zona 6 (km)", value=float(ZONA_6_KM), step=0.1, format="%.1f", disabled=True)
+        st.number_input("Zona 7 (km)", value=float(ZONA_7_KM), step=0.1, format="%.1f", disabled=True)
 
     st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1, disabled=True)
     st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1, disabled=True)
@@ -433,6 +442,10 @@ if go:
 
     if not fecha_porte:
         st.error("Indica la fecha en la que se va a realizar el porte antes de calcular.")
+        st.stop()
+
+    if not cliente_telefono.strip():
+        st.error("Introduce el teléfono del cliente antes de calcular.")
         st.stop()
 
     if not cliente_nombre.strip() or not operario_codigo.strip():
@@ -497,6 +510,9 @@ if go:
         "anotaciones": anotaciones.strip(),
         "zona_5_km": ZONA_5_KM, "zona_6_km": ZONA_6_KM, "zona_7_km": ZONA_7_KM,
         "precio_z5": PRECIO_ZONA_5, "precio_z6": PRECIO_ZONA_6, "precio_z7": PRECIO_ZONA_7,
+        # El apóstrofo hace que Sheets lo guarde como texto y no se pierdan
+        # el "+" del prefijo ni los ceros iniciales.
+        "cliente_telefono": f"'{cliente_telefono.strip()}",
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
@@ -506,6 +522,7 @@ if go:
         "fecha_porte": fecha_porte,
         "anotaciones": anotaciones.strip(),
         "cliente_nombre": cliente_nombre.strip(),
+        "cliente_telefono": cliente_telefono.strip(),
         "operario_codigo": operario_codigo.strip(),
         "dest": dest,
         "coords": coords,
@@ -529,6 +546,7 @@ if result:
         st.caption(f"Sección: **{result['seccion']}**")
         st.caption(f"Fecha del porte: **{result['fecha_porte']:%d/%m/%Y}**")
         st.caption(f"Cliente: **{result['cliente_nombre']}**")
+        st.caption(f"Teléfono: **{result['cliente_telefono']}**")
         st.caption(f"Operario: **{result['operario_codigo']}**")
         st.caption(f"Destino: **{result['dest'][2]}**")
         st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
