@@ -55,12 +55,6 @@ PRECIO_ZONA_6 = 100
 PRECIO_ZONA_7 = 120
 PRECIO_POR_KM_EXTRA = 1
 
-# Descuentos sobre el porte según el importe del pedido: tres categorías,
-# cada una con su importe mínimo y su porcentaje. Se aplica la de mayor
-# importe mínimo superado. Con el porcentaje a 0 la categoría queda desactivada.
-NUM_DESCUENTOS = 3
-DESCUENTOS = [(0, 0)] * NUM_DESCUENTOS  # (importe mínimo, porcentaje)
-
 # Dimensiones reales del camión, en las unidades "humanas" (metros/kg) que
 # se usan en el resto de la app. A partir de aquí se convierten a lo que
 # pide HERE Routing v8: height/width/length en CENTÍMETROS ENTEROS.
@@ -105,7 +99,6 @@ FIELDNAMES = [
     "seccion", "fecha_porte", "anotaciones",
     "zona_5_km", "zona_6_km", "zona_7_km",
     "precio_z5", "precio_z6", "precio_z7",
-    "importe_pedido", "precio_sin_descuento", "descuento_pct", "descuento_eur",
 ]
 
 # =========================================================
@@ -173,21 +166,6 @@ PRECIO_ZONA_5 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_5", PRECIO_ZONA_5)
 PRECIO_ZONA_6 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_6", PRECIO_ZONA_6)
 PRECIO_ZONA_7 = cfg_int(REMOTE_CFG, "PRECIO_ZONA_7", PRECIO_ZONA_7)
 PRECIO_POR_KM_EXTRA = cfg_float(REMOTE_CFG, "PRECIO_POR_KM_EXTRA", PRECIO_POR_KM_EXTRA)
-
-def load_descuentos(cfg):
-    descuentos = []
-    for i, (minimo, pct) in enumerate(DESCUENTOS, start=1):
-        if i == 1:
-            # Claves antiguas, de cuando solo había una categoría.
-            minimo = cfg_float(cfg, "DESCUENTO_IMPORTE_MINIMO", minimo)
-            pct = cfg_float(cfg, "DESCUENTO_PORCENTAJE", pct)
-        minimo = cfg_float(cfg, f"DESCUENTO_{i}_IMPORTE_MINIMO", minimo)
-        pct = cfg_float(cfg, f"DESCUENTO_{i}_PORCENTAJE", pct)
-        descuentos.append((minimo, min(max(pct, 0), 100)))
-    return descuentos
-
-DESCUENTOS = load_descuentos(REMOTE_CFG)
-DESCUENTOS_ACTIVOS = sorted((m, p) for m, p in DESCUENTOS if p > 0)
 
 def get_api_key():
     if "HERE_API_KEY" in st.secrets:
@@ -277,16 +255,6 @@ def compute_tariff(distance_km):
     else:
         km_extra = distance_km - ZONA_7_KM
         return PRECIO_ZONA_7 + km_extra * PRECIO_POR_KM_EXTRA
-
-def compute_discount_pct(importe_pedido):
-    """Porcentaje de descuento sobre el porte según el importe del pedido."""
-    if importe_pedido is None:
-        return 0
-    pct = 0
-    for minimo, porcentaje in DESCUENTOS_ACTIVOS:
-        if importe_pedido > minimo:
-            pct = porcentaje
-    return pct
 
 def human_duration(seconds: int) -> str:
     m, s = divmod(int(seconds), 60)
@@ -396,14 +364,6 @@ with st.sidebar:
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
-    importe_pedido = st.number_input(
-        "Importe del pedido (€, opcional)", value=None, min_value=0.0, step=1.0, format="%.2f",
-    )
-    if DESCUENTOS_ACTIVOS:
-        st.caption(
-            "Descuento sobre el porte: "
-            + " · ".join(f"más de {m:g} € → {p:g} %" for m, p in DESCUENTOS_ACTIVOS)
-        )
     anotaciones = st.text_area(
         "Anotaciones (opcional)", value="",
         placeholder="Ej.: solo se puede entrar hasta las 12:00",
@@ -504,10 +464,7 @@ if go:
 
     distancia_km = round(length_m / 1000.0, 2)
     dur = human_duration(duration_s)
-    price_base = compute_tariff(distancia_km)
-    descuento_pct = compute_discount_pct(importe_pedido)
-    descuento_eur = round(price_base * descuento_pct / 100, 2)
-    price = price_base - descuento_eur
+    price = compute_tariff(distancia_km)
 
     row = {
         "timestamp_iso": madrid_now_iso(),
@@ -540,10 +497,6 @@ if go:
         "anotaciones": anotaciones.strip(),
         "zona_5_km": ZONA_5_KM, "zona_6_km": ZONA_6_KM, "zona_7_km": ZONA_7_KM,
         "precio_z5": PRECIO_ZONA_5, "precio_z6": PRECIO_ZONA_6, "precio_z7": PRECIO_ZONA_7,
-        "importe_pedido": "" if importe_pedido is None else round(importe_pedido, 2),
-        "precio_sin_descuento": round(price_base, 2),
-        "descuento_pct": descuento_pct,
-        "descuento_eur": descuento_eur,
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
@@ -559,9 +512,6 @@ if go:
         "distancia_km": distancia_km,
         "dur": dur,
         "price": price,
-        "price_base": price_base,
-        "descuento_pct": descuento_pct,
-        "descuento_eur": descuento_eur,
         "row": row,
         "saved": False,
         "log_ok": None,
@@ -576,11 +526,6 @@ if result:
         st.metric("Distancia (km)", result["distancia_km"])
         st.metric("Duración", result["dur"])
         st.metric("Precio (€)", f"{result['price']:.2f}")
-        if result["descuento_eur"]:
-            st.caption(
-                f"Descuento del {result['descuento_pct']:g} % aplicado: "
-                f"{result['price_base']:.2f} € − {result['descuento_eur']:.2f} €"
-            )
         st.caption(f"Sección: **{result['seccion']}**")
         st.caption(f"Fecha del porte: **{result['fecha_porte']:%d/%m/%Y}**")
         st.caption(f"Cliente: **{result['cliente_nombre']}**")
