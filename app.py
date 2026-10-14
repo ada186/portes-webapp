@@ -105,7 +105,7 @@ FIELDNAMES = [
     "seccion", "fecha_porte", "anotaciones",
     "zona_5_km", "zona_6_km", "zona_7_km",
     "precio_z5", "precio_z6", "precio_z7",
-    "cliente_telefono", "albaran",
+    "cliente_telefono", "albaran", "operario_nombre",
 ]
 
 # =========================================================
@@ -137,6 +137,26 @@ def load_remote_config(control_sheet_id: str) -> dict:
             cfg[r[0].strip()] = r[1].strip()
     return cfg
 
+def normalize_operario(codigo: str) -> str:
+    """Normaliza el código de operario para comparar ("007" == "7", "ab1" == "AB1")."""
+    codigo = codigo.strip().upper()
+    if codigo.isdigit():
+        codigo = codigo.lstrip("0") or "0"
+    return codigo
+
+@st.cache_data(ttl=300)
+def load_operarios(control_sheet_id: str) -> dict:
+    """Lee la pestaña 'operarios' de la hoja de control: código (col. A) → nombre (col. B)."""
+    gc = sheets_client_from_secrets()
+    ws = gc.open_by_key(control_sheet_id).worksheet("operarios")
+    operarios = {}
+    for r in ws.get_all_values():
+        if len(r) >= 2 and r[0].strip() and r[1].strip():
+            if r[0].strip().lower() in ("código", "codigo"):
+                continue  # fila de títulos
+            operarios[normalize_operario(r[0])] = r[1].strip()
+    return operarios
+
 def parse_num(value: str) -> float:
     """Convierte un número de la hoja, aceptando coma decimal ("0,5")."""
     value = value.strip()
@@ -163,6 +183,13 @@ if REMOTE_CONTROL_ID:
         REMOTE_CFG = load_remote_config(REMOTE_CONTROL_ID)
     except Exception as e:
         st.sidebar.warning(f"No se pudo leer la hoja de control: {e}")
+
+OPERARIOS = {}
+if REMOTE_CONTROL_ID:
+    try:
+        OPERARIOS = load_operarios(REMOTE_CONTROL_ID)
+    except Exception as e:
+        st.sidebar.warning(f"No se pudo leer la pestaña 'operarios' de la hoja de control: {e}")
 
 # La hoja de control (si existe) se usa como fuente de los valores por defecto.
 ZONA_1_KM = cfg_float(REMOTE_CFG, "ZONA_1_KM", ZONA_1_KM)
@@ -331,7 +358,7 @@ PORTES_COLUMNAS = [
     ("Dirección", "dest_geocoded_title"),
     ("Km", "distance_km"),
     ("Precio (€)", "price_eur"),
-    ("Operario", "operario_codigo"),
+    ("Operario", "operario_nombre"),
     ("Anotaciones", "anotaciones"),
     ("Registrado", "timestamp_iso"),
 ]
@@ -410,6 +437,11 @@ with st.sidebar:
     cliente_nombre = st.text_input("Nombre del cliente", value="")
     cliente_telefono = st.text_input("Teléfono del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
+    operario_nombre = OPERARIOS.get(normalize_operario(operario_codigo), "")
+    if operario_nombre:
+        st.caption(f"👤 {operario_nombre}")
+    elif operario_codigo.strip() and OPERARIOS:
+        st.caption("⚠️ Código de operario no encontrado.")
     anotaciones = st.text_area(
         "Anotaciones (opcional)", value="",
         placeholder="Ej.: solo se puede entrar hasta las 12:00",
@@ -495,6 +527,13 @@ if go:
         st.error("Introduce el nombre del cliente y el código de operario antes de calcular.")
         st.stop()
 
+    if OPERARIOS and not operario_nombre:
+        st.error("El código de operario no está en la pestaña 'operarios' de la hoja de control.")
+        st.stop()
+    if not OPERARIOS:
+        # Sin lista de operarios no se puede traducir: se guarda el código.
+        operario_nombre = operario_codigo.strip()
+
     if not dest_address.strip():
         st.error("Introduce la dirección de destino antes de calcular.")
         st.stop()
@@ -526,6 +565,7 @@ if go:
         "timestamp_iso": madrid_now_iso(),
         "cliente_nombre": cliente_nombre.strip(),
         "operario_codigo": operario_codigo.strip(),
+        "operario_nombre": operario_nombre,
         "origin_address": ORIGIN_ADDRESS,
         "origin_lat": ORIGIN_LAT,
         "origin_lon": ORIGIN_LON,
@@ -569,6 +609,7 @@ if go:
         "cliente_nombre": cliente_nombre.strip(),
         "cliente_telefono": cliente_telefono.strip(),
         "operario_codigo": operario_codigo.strip(),
+        "operario_nombre": operario_nombre,
         "dest": dest,
         "coords": coords,
         "distancia_km": distancia_km,
@@ -594,7 +635,7 @@ if result:
         st.caption(f"Fecha del porte: **{result['fecha_porte']:%d/%m/%Y}**")
         st.caption(f"Cliente: **{result['cliente_nombre']}**")
         st.caption(f"Teléfono: **{result['cliente_telefono']}**")
-        st.caption(f"Operario: **{result['operario_codigo']}**")
+        st.caption(f"Operario: **{result['operario_nombre']}**")
         st.caption(f"Destino: **{result['dest'][2]}**")
         st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
         if result["anotaciones"]:
