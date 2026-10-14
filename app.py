@@ -84,6 +84,12 @@ TRUCK_PARAMS = {
 # =========================================================
 SECCIONES = ["Exposición Vital Aza", "Almacén Ezequiel Solana"]
 
+# Prefijo obligatorio del número de albarán según la sección.
+ALBARAN_PREFIJOS = {
+    "Exposición Vital Aza": "A02",
+    "Almacén Ezequiel Solana": "A01",
+}
+
 FIELDNAMES = [
     "timestamp_iso",
     "cliente_nombre", "operario_codigo",
@@ -99,7 +105,7 @@ FIELDNAMES = [
     "seccion", "fecha_porte", "anotaciones",
     "zona_5_km", "zona_6_km", "zona_7_km",
     "precio_z5", "precio_z6", "precio_z7",
-    "cliente_telefono",
+    "cliente_telefono", "albaran",
 ]
 
 # =========================================================
@@ -369,6 +375,10 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Datos del porte")
     seccion = st.radio("Sección", SECCIONES, index=None)
+    albaran = st.text_input(
+        "Número de albarán (opcional)", value="",
+        placeholder="A01… almacén / A02… exposición",
+    )
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
     cliente_telefono = st.text_input("Teléfono del cliente", value="")
@@ -438,6 +448,12 @@ if go:
 
     if not seccion:
         st.error("Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular.")
+        st.stop()
+
+    albaran = albaran.strip().upper()
+    prefijo = ALBARAN_PREFIJOS[seccion]
+    if albaran and (not albaran.startswith(prefijo) or len(albaran) == len(prefijo)):
+        st.error(f"El número de albarán de {seccion} debe empezar por {prefijo} (por ejemplo, {prefijo}1234).")
         st.stop()
 
     if not fecha_porte:
@@ -513,12 +529,14 @@ if go:
         # El apóstrofo hace que Sheets lo guarde como texto y no se pierdan
         # el "+" del prefijo ni los ceros iniciales.
         "cliente_telefono": f"'{cliente_telefono.strip()}",
+        "albaran": albaran,
     }
 
     # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
     # usuario lo confirme con el botón "Guardar porte en Google Sheets".
     st.session_state["result"] = {
         "seccion": seccion,
+        "albaran": albaran,
         "fecha_porte": fecha_porte,
         "anotaciones": anotaciones.strip(),
         "cliente_nombre": cliente_nombre.strip(),
@@ -544,6 +562,8 @@ if result:
         st.metric("Duración", result["dur"])
         st.metric("Precio (€)", f"{result['price']:.2f}")
         st.caption(f"Sección: **{result['seccion']}**")
+        if result["albaran"]:
+            st.caption(f"Albarán: **{result['albaran']}**")
         st.caption(f"Fecha del porte: **{result['fecha_porte']:%d/%m/%Y}**")
         st.caption(f"Cliente: **{result['cliente_nombre']}**")
         st.caption(f"Teléfono: **{result['cliente_telefono']}**")
