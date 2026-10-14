@@ -320,36 +320,63 @@ def madrid_now_iso():
 # =========================================================
 # Logging automático a Google Sheets
 # =========================================================
-def append_to_gsheet(spreadsheet_key: str, worksheet_name: str, row: dict):
-    gc = sheets_client_from_secrets()
-    sh = gc.open_by_key(spreadsheet_key)
+# Pestaña "portes": solo lo esencial para el día a día, con títulos legibles.
+# La pestaña "logs" sigue guardando todos los datos (FIELDNAMES).
+PORTES_COLUMNAS = [
+    ("Fecha porte", "fecha_porte"),
+    ("Sección", "seccion"),
+    ("Albarán", "albaran"),
+    ("Cliente", "cliente_nombre"),
+    ("Teléfono", "cliente_telefono"),
+    ("Dirección", "dest_geocoded_title"),
+    ("Km", "distance_km"),
+    ("Precio (€)", "price_eur"),
+    ("Operario", "operario_codigo"),
+    ("Anotaciones", "anotaciones"),
+    ("Registrado", "timestamp_iso"),
+]
+
+def append_to_gsheet(sh, worksheet_name: str, header: list, values: list):
     try:
         ws = sh.worksheet(worksheet_name)
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title=worksheet_name, rows=1, cols=len(FIELDNAMES))
-        ws.append_row(FIELDNAMES, value_input_option="RAW")
-    header = ws.row_values(1)
-    if not header:
-        ws.append_row(FIELDNAMES, value_input_option="RAW")
-    elif len(header) < len(FIELDNAMES) and header == FIELDNAMES[:len(header)]:
+        ws = sh.add_worksheet(title=worksheet_name, rows=1, cols=len(header))
+        ws.append_row(header, value_input_option="RAW")
+    current = ws.row_values(1)
+    if not current:
+        ws.append_row(header, value_input_option="RAW")
+    elif len(current) < len(header) and current == header[:len(current)]:
         # Hoja creada antes de añadir columnas nuevas: se amplía la cabecera.
-        if ws.col_count < len(FIELDNAMES):
-            ws.add_cols(len(FIELDNAMES) - ws.col_count)
-        ws.update(values=[FIELDNAMES], range_name="A1", value_input_option="RAW")
-    values = [row.get(k, "") for k in FIELDNAMES]
+        if ws.col_count < len(header):
+            ws.add_cols(len(header) - ws.col_count)
+        ws.update(values=[header], range_name="A1", value_input_option="RAW")
     ws.append_row(values, value_input_option="USER_ENTERED")
 
 def log_to_sheets(row: dict):
+    """Guarda el porte en "logs" (completo) y en "portes" (resumen).
+
+    Devuelve (guardado, mensaje). Si "logs" se guarda pero "portes" falla,
+    devuelve guardado=True con un aviso, para no duplicar la fila al reintentar.
+    """
     logs_sheet_id = st.secrets.get("LOGS_SHEET_ID", "")
     if not logs_sheet_id:
         return False, "Falta 'LOGS_SHEET_ID' en Secrets."
     if not _gspread_ready:
         return False, "Faltan dependencias gspread/google-auth."
     try:
-        append_to_gsheet(logs_sheet_id, "logs", row)
-        return True, None
+        sh = sheets_client_from_secrets().open_by_key(logs_sheet_id)
+        append_to_gsheet(sh, "logs", FIELDNAMES, [row.get(k, "") for k in FIELDNAMES])
     except Exception as e:
         return False, str(e)
+    try:
+        append_to_gsheet(
+            sh, "portes",
+            [titulo for titulo, _ in PORTES_COLUMNAS],
+            [row.get(k, "") for _, k in PORTES_COLUMNAS],
+        )
+    except Exception as e:
+        return True, f"Guardado en 'logs', pero no en la pestaña 'portes': {e}"
+    return True, None
 
 # =========================================================
 # INTERFAZ
@@ -576,6 +603,8 @@ if result:
         st.markdown("---")
         if result["saved"]:
             st.success("✅ Porte guardado en Google Sheets.")
+            if result["log_err"]:
+                st.warning(result["log_err"])
         else:
             if st.button("💾 Confirmar y guardar porte", type="primary"):
                 log_ok, log_err = log_to_sheets(result["row"])
