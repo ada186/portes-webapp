@@ -384,6 +384,8 @@ with st.sidebar:
     dest_postal = st.text_input("Código postal (opcional)", value="")
     dest_city = st.text_input("Población (opcional)", value="Madrid")
 
+    go = st.button("Calcular ruta y precio", type="primary")
+
     st.markdown("---")
     st.subheader("Tarifas (solo lectura)")
     if REMOTE_CFG:
@@ -426,8 +428,6 @@ with st.sidebar:
         with st.expander("🔧 Configuración remota (debug)"):
             st.write("CONTROL_SHEET_ID:", REMOTE_CONTROL_ID)
             st.json(REMOTE_CFG)
-
-    go = st.button("Calcular ruta y precio", type="primary")
 
 map_col, info_col = st.columns([2, 1])
 
