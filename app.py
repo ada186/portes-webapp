@@ -84,10 +84,10 @@ TRUCK_PARAMS = {
 # =========================================================
 SECCIONES = ["Exposición Vital Aza", "Almacén Ezequiel Solana"]
 
-# Prefijo obligatorio del número de albarán según la sección.
+# Prefijos válidos del número de albarán según la sección.
 ALBARAN_PREFIJOS = {
-    "Exposición Vital Aza": "A02",
-    "Almacén Ezequiel Solana": "A01",
+    "Exposición Vital Aza": ("A02", "T02"),
+    "Almacén Ezequiel Solana": ("A01", "T01"),
 }
 
 FIELDNAMES = [
@@ -431,7 +431,7 @@ with st.sidebar:
     seccion = st.radio("Sección", SECCIONES, index=None)
     albaran = st.text_input(
         "Número de albarán (opcional)", value="",
-        placeholder="A01… almacén / A02… exposición",
+        placeholder="A01/T01… almacén · A02/T02… exposición",
     )
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
@@ -510,9 +510,12 @@ if go:
         st.stop()
 
     albaran = albaran.strip().upper()
-    prefijo = ALBARAN_PREFIJOS[seccion]
-    if albaran and (not albaran.startswith(prefijo) or len(albaran) == len(prefijo)):
-        st.error(f"El número de albarán de {seccion} debe empezar por {prefijo} (por ejemplo, {prefijo}1234).")
+    prefijos = ALBARAN_PREFIJOS[seccion]
+    if albaran and not any(albaran.startswith(p) and len(albaran) > len(p) for p in prefijos):
+        st.error(
+            f"El número de albarán de {seccion} debe empezar por {' o '.join(prefijos)} "
+            f"(por ejemplo, {prefijos[0]}1234)."
+        )
         st.stop()
 
     if not fecha_porte:
