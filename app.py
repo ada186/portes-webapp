@@ -345,11 +345,16 @@ def minutos(segundos):
 
 # Color fijo de cada zona, de la más cercana (verde) a la más lejana (rojo BigMat).
 # Es el mismo en el mapa, en la ficha del porte y en el cuadro de zonas.
-COLORES_ZONA = ["#1FA34A", "#00A9CE", "#2B7DE1", "#7B3FBF", "#FFB000", "#FF6A13", "#E4000F"]
+COLORES_ZONA = ["#1FA34A", "#00A9CE", "#1F6ED4", "#7B3FBF", "#FFB000", "#FF6A13", "#E4000F"]
+# Tinta del rótulo sobre cada color de zona, elegida para que se lea (contraste 4.5:1).
+TINTAS_ZONA = ["#14213D", "#14213D", "#FFFFFF", "#FFFFFF", "#14213D", "#14213D", "#FFFFFF"]
 COLOR_FUERA = "#14213D"
 
 def color_zona(zona):
     return COLORES_ZONA[zona - 1] if zona else COLOR_FUERA
+
+def tinta_zona(zona):
+    return TINTAS_ZONA[zona - 1] if zona else "#FFFFFF"
 
 # Estilos dentro del iframe del mapa: las reglas de estilo.css no llegan ahí.
 MAPA_ESTILO = """
@@ -424,7 +429,7 @@ def plano_mapa(result=None):
         Marker(
             [ORIGIN_LAT, ORIGIN_LON + sentido * lon_offset(ORIGIN_LAT, limite)],
             icon=folium.DivIcon(
-                html=(f'<span class="cota{" activa" if es_activa else ""}" style="background:{color}">'
+                html=(f'<span class="cota{" activa" if es_activa else ""}" style="background:{color};color:{tinta_zona(i)}">'
                       f'Z{i} · {num_es(limite)} km · {precio} €</span>'),
                 icon_size=(0, 0), class_name="cota-icon",
             ),
@@ -459,11 +464,16 @@ def plano_mapa(result=None):
     metros_por_px_z0 = 156543.03 * math.cos(math.radians(ORIGIN_LAT))
     zoom = math.log2(metros_por_px_z0 * 560 / (radio_encuadre * 2000 * 1.08))
     zoom = max(8, min(16, math.floor(zoom * 4) / 4))
+    # En el navegador se recalcula con el tamaño real del mapa (móvil, columnas estrechas).
+    metros_encuadre = radio_encuadre * 2000 * 1.08
     mapa = m.get_name()
     # Se reencuadra solo al cargar; al redimensionar se recalcula el tamaño sin
     # deshacer el zoom que haya elegido quien lo está mirando.
     m.get_root().script.add_child(Element(
-        f"function encuadrar() {{ {mapa}.invalidateSize(); {mapa}.setView([{ORIGIN_LAT}, {ORIGIN_LON}], {zoom}); }}"
+        f"function encuadrar() {{ {mapa}.invalidateSize(); var t = {mapa}.getSize();"
+        f" var z = Math.log2({metros_por_px_z0} * Math.min(t.x, t.y) / {metros_encuadre});"
+        f" z = Math.max(8, Math.min(16, Math.floor(z * 4) / 4));"
+        f" {mapa}.setView([{ORIGIN_LAT}, {ORIGIN_LON}], isFinite(z) ? z : {zoom}); }}"
         f"setTimeout(encuadrar, 150); setTimeout(encuadrar, 700);"
         f"window.addEventListener('resize', function () {{ {mapa}.invalidateSize(); }});"
     ))
@@ -569,10 +579,10 @@ def burbuja_html(precio):
 
 def chip_zona_html(zona):
     if zona:
-        return (f'<span class="chip-zona" style="background:{color_zona(zona)}">'
-                f'<b style="color:{color_zona(zona)}">Z{zona}</b>Zona {zona}</span>')
-    return (f'<span class="chip-zona" style="background:{COLOR_FUERA}">'
-            f'<b style="color:{COLOR_FUERA}">+</b>Más de {num_es(ZONA_7_KM)} km</span>')
+        return (f'<span class="chip-zona" style="background:{color_zona(zona)};color:{tinta_zona(zona)}">'
+                f'<b>Z{zona}</b>Zona {zona}</span>')
+    return (f'<span class="chip-zona" style="background:{COLOR_FUERA};color:#FFFFFF">'
+            f'<b>+</b>Más de {num_es(ZONA_7_KM)} km</span>')
 
 def ficha_vacia_html():
     return """
@@ -633,13 +643,13 @@ def cuadro_zonas_html(activa=None, fuera=False):
     for i, (limite, precio) in enumerate(zonas(), start=1):
         clase = ' class="activa"' if i == activa else ""
         filas.append(
-            f'<tr{clase}><td><span class="z" style="background:{color_zona(i)}">Z{i}</span></td>'
+            f'<tr{clase}><td><span class="z" style="background:{color_zona(i)};color:{tinta_zona(i)}">Z{i}</span></td>'
             f'<td>{num_es(desde)} – {num_es(limite)} km</td><td class="n precio">{precio} €</td></tr>'
         )
         desde = limite
     clase = ' class="activa"' if fuera else ""
     filas.append(
-        f'<tr{clase}><td><span class="z" style="background:{COLOR_FUERA}">+Z7</span></td>'
+        f'<tr{clase}><td><span class="z" style="background:{COLOR_FUERA};color:#FFFFFF">+Z7</span></td>'
         f'<td>Más de {num_es(ZONA_7_KM)} km</td>'
         f'<td class="n precio">{PRECIO_ZONA_7} € +{num_es(PRECIO_POR_KM_EXTRA)} €/km</td></tr>'
     )
@@ -668,27 +678,37 @@ LEYENDA_HTML = """
 api_key = get_api_key()
 logs_ok = bool(st.secrets.get("LOGS_SHEET_ID", ""))
 
+# Huecos bajo cada campo para mostrar el aviso donde está el error.
+avisos_campo = {}
+
 with st.sidebar:
     rotulo_seccion(1, "Datos del porte")
     seccion = st.radio("Sección", SECCIONES, index=None)
+    avisos_campo["seccion"] = st.empty()
     albaran = st.text_input(
         "Número de albarán (opcional)", value="",
         placeholder="A01/T01… almacén · A02/T02… exposición",
     )
+    avisos_campo["albaran"] = st.empty()
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
+    avisos_campo["fecha"] = st.empty()
     operario_codigo = st.text_input("Código de operario", value="")
     operario_nombre = OPERARIOS.get(normalize_operario(operario_codigo), "")
     if operario_nombre:
         st.markdown(f'<p class="operario-ok">{esc(operario_nombre)}</p>', unsafe_allow_html=True)
     elif operario_codigo.strip() and OPERARIOS:
         st.markdown('<p class="operario-ko">Código de operario no encontrado</p>', unsafe_allow_html=True)
+    avisos_campo["operario"] = st.empty()
 
     rotulo_seccion(2, "Cliente")
     cliente_nombre = st.text_input("Nombre del cliente", value="")
+    avisos_campo["cliente"] = st.empty()
     cliente_telefono = st.text_input("Teléfono del cliente", value="")
+    avisos_campo["telefono"] = st.empty()
 
     rotulo_seccion(3, "Destino")
     dest_address = st.text_input("Dirección destino", value="")
+    avisos_campo["destino"] = st.empty()
     dest_postal = st.text_input("Código postal (opcional)", value="")
     dest_city = st.text_input("Población (opcional)", value="Madrid")
     anotaciones = st.text_area(
@@ -712,30 +732,36 @@ with st.sidebar:
             st.json(REMOTE_CFG)
 
 def validar():
-    """Devuelve el primer error de la hoja de datos, o None si está completa."""
+    """Devuelve (campo, error) del primer fallo de la hoja de datos, o None si está completa."""
+    error = _validar()
+    if error is None or isinstance(error, tuple):
+        return error
+    return (None, error)
+
+def _validar():
     if not api_key:
         return "Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno."
     if not seccion:
-        return "Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular."
+        return "seccion", "Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular."
     prefijos = ALBARAN_PREFIJOS[seccion]
     alb = albaran.strip().upper()
     if alb and not any(alb.startswith(p) and len(alb) > len(p) for p in prefijos):
-        return (
+        return "albaran", (
             f"El número de albarán de {seccion} debe empezar por {' o '.join(prefijos)} "
             f"(por ejemplo, {prefijos[0]}1234)."
         )
     if not fecha_porte:
-        return "Indica la fecha en la que se va a realizar el porte antes de calcular."
+        return "fecha", "Indica la fecha en la que se va a realizar el porte antes de calcular."
     if not operario_codigo.strip():
-        return "Introduce el código de operario antes de calcular."
+        return "operario", "Introduce el código de operario antes de calcular."
     if OPERARIOS and not operario_nombre:
-        return "El código de operario no está en la pestaña 'operarios' de la hoja de control."
+        return "operario", "El código de operario no está en la pestaña 'operarios' de la hoja de control."
     if not cliente_nombre.strip():
-        return "Introduce el nombre del cliente antes de calcular."
+        return "cliente", "Introduce el nombre del cliente antes de calcular."
     if not cliente_telefono.strip():
-        return "Introduce el teléfono del cliente antes de calcular."
+        return "telefono", "Introduce el teléfono del cliente antes de calcular."
     if not dest_address.strip():
-        return "Introduce la dirección de destino antes de calcular."
+        return "destino", "Introduce la dirección de destino antes de calcular."
     return None
 
 def calcular():
@@ -831,9 +857,16 @@ def calcular():
 if go:
     # Un cálculo nuevo descarta el anterior, para no confundir datos viejos con los nuevos.
     st.session_state["result"] = None
-    error = validar() or calcular()
-    if error:
+    fallo = validar()
+    if fallo:
+        campo, error = fallo
+        if campo in avisos_campo:
+            avisos_campo[campo].error(error)
         aviso.error(error)
+    else:
+        error = calcular()
+        if error:
+            aviso.error(error)
 
 result = st.session_state.get("result")
 

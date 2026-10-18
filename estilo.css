@@ -19,7 +19,8 @@
 html { scrollbar-color: #B9C3D3 var(--gris); }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { max-width: 1440px; padding-top: 1.2rem; padding-bottom: 3rem; }
-:focus-visible { outline: 3px solid var(--amarillo); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; }
+[data-testid="stSidebar"] :focus-visible { outline-color: var(--amarillo); }
 
 /* ---------- Cabecera de folleto ---------- */
 .folleto-cabecera {
@@ -89,9 +90,8 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
   background: var(--blanco);
   border: 2px solid var(--azul);
   border-radius: 0.6rem;
-  padding: 6px;
+  padding: 6px 6px 10px;
   gap: 0.3rem;
-  overflow: hidden;
 }
 .st-key-plano iframe { display: block; border-radius: 0.35rem; }
 .leyenda {
@@ -109,7 +109,7 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
 .leyenda span { display: inline-flex; align-items: center; gap: 0.4rem; }
 .leyenda i { display: inline-block; flex: none; }
 .leyenda .l-zonas { width: 42px; height: 6px; border-radius: 3px; background:
-  linear-gradient(90deg, #1FA34A 0 14.3%, #00A9CE 0 28.6%, #2B7DE1 0 42.9%, #7B3FBF 0 57.1%, #FFB000 0 71.4%, #FF6A13 0 85.7%, #E4000F 0); }
+  linear-gradient(90deg, #1FA34A 0 14.3%, #00A9CE 0 28.6%, #1F6ED4 0 42.9%, #7B3FBF 0 57.1%, #FFB000 0 71.4%, #FF6A13 0 85.7%, #E4000F 0); }
 .leyenda .l-ruta { width: 26px; height: 5px; border-radius: 3px; background: var(--azul); }
 .leyenda .l-almacen { width: 14px; height: 14px; border-radius: 50%; background: var(--azul); box-shadow: inset 0 0 0 3px var(--blanco), 0 0 0 2px var(--azul); }
 .leyenda .l-destino { width: 14px; height: 14px; border-radius: 50%; background: var(--rojo); box-shadow: inset 0 0 0 3px var(--blanco), 0 0 0 2px var(--rojo); }
@@ -174,7 +174,6 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
   align-items: center;
   gap: 0.5rem;
   justify-self: start;
-  color: var(--blanco);
   border-radius: 999px;
   padding: 0.25rem 0.85rem 0.22rem 0.3rem;
   font-family: "Barlow Condensed", sans-serif;
@@ -191,6 +190,7 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
   height: 2.1rem;
   border-radius: 50%;
   background: var(--blanco);
+  color: var(--tinta);
   font-size: 1.05rem;
 }
 .ficha .km { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 2.1rem; line-height: 1; color: var(--tinta); }
@@ -265,7 +265,7 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
 @media (prefers-reduced-motion: reduce) { .pegatina.registrado { animation: none; } }
 
 .ficha.vacia .oferta { grid-template-columns: auto 1fr; }
-.ficha.vacia .burbuja { background: var(--gris); border-color: #B9C3D3; color: #8A96AC; }
+.ficha.vacia .burbuja { background: var(--gris); border-color: #B9C3D3; color: #5E6B82; }
 .ficha.vacia .burbuja .euros { font-size: 2.6rem; }
 
 /* ---------- Cuadro de zonas ---------- */
@@ -293,14 +293,13 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
   justify-content: center;
   min-width: 2.4rem;
   border-radius: 999px;
-  color: var(--blanco);
   font-family: "Barlow Condensed", sans-serif;
   font-weight: 800;
   font-size: 0.85rem;
   padding: 0.05rem 0.45rem;
 }
 .cuadro tr.activa td { background: var(--amarillo); font-weight: 700; }
-.cuadro tr.activa td.precio { color: var(--rojo); font-size: 1.2rem; }
+.cuadro tr.activa td.precio { color: var(--rojo); font-size: 1.3rem; }
 .cuadro tr:last-child td { border-bottom: 0; }
 .cuadro .fuente { padding: 0.45rem 1rem 0.55rem; border-top: 1px solid var(--linea); font-size: 0.82rem; color: var(--tinta-suave); line-height: 1.35; background: var(--gris); }
 
@@ -339,7 +338,7 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
   text-transform: uppercase;
 }
 [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p { color: #CFE0F7; }
-[data-testid="stSidebar"] input::placeholder, [data-testid="stSidebar"] textarea::placeholder { color: #A9C2E6; opacity: 1; }
+[data-testid="stSidebar"] input::placeholder, [data-testid="stSidebar"] textarea::placeholder { color: #BCD0EE; opacity: 1; }
 .operario-ok { margin: -0.4rem 0 0.2rem; font-size: 0.92rem; color: var(--amarillo); font-weight: 700; }
 .operario-ko { margin: -0.4rem 0 0.2rem; font-size: 0.92rem; color: var(--blanco); font-weight: 700; }
 .operario-ko::before { content: ""; display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--rojo); box-shadow: 0 0 0 2px var(--blanco); margin-right: 0.45rem; }
@@ -351,7 +350,7 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
 /* Botones de folleto */
 [data-testid="stBaseButton-primary"] {
   min-height: 3rem;
-  box-shadow: 0 2px 0 var(--rojo-hondo);
+  box-shadow: 0 2px 6px rgba(176, 0, 11, 0.35);
   transition: background-color 150ms ease-out, transform 120ms ease-out;
 }
 [data-testid="stBaseButton-primary"]:hover { background-color: var(--rojo-hondo); border-color: var(--rojo-hondo); }
@@ -382,3 +381,16 @@ html { scrollbar-color: #B9C3D3 var(--gris); }
 /* Ajustes de la ficha vacía y del cuadro */
 .ficha.vacia .burbuja { width: 7rem; height: 7rem; border-width: 4px; }
 .cuadro td.precio { white-space: nowrap; }
+
+/* Botón para abrir la hoja de pedido (barra lateral plegada, sobre todo en móvil) */
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapsedControl"] button {
+  background: var(--azul) !important;
+  color: var(--amarillo) !important;
+  border-radius: 0.4rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  box-shadow: 0 2px 6px rgba(0, 60, 135, 0.3);
+}
+[data-testid="stExpandSidebarButton"] span,
+[data-testid="stSidebarCollapsedControl"] span { color: var(--amarillo) !important; font-size: 1.5rem; }
