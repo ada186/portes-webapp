@@ -1,0 +1,384 @@
+/* Portes · BigMat Rodríguez — "Folleto de ofertas"
+   Bloques planos de rojo, amarillo y azul BigMat sobre blanco; el precio en burbuja,
+   titulares condensados en negra cursiva y una pegatina que cambia al registrar. */
+:root {
+  --rojo: #E4000F;
+  --rojo-hondo: #B0000B;
+  --amarillo: #FFD400;
+  --azul: #003C87;
+  --azul-hondo: #002A60;
+  --azul-claro: #0B4FA3;
+  --blanco: #FFFFFF;
+  --gris: #F4F6FA;
+  --linea: #D7DDE8;
+  --tinta: #14213D;
+  --tinta-suave: #4A5671;
+}
+
+::selection { background: var(--amarillo); color: var(--tinta); }
+html { scrollbar-color: #B9C3D3 var(--gris); }
+[data-testid="stHeader"] { background: transparent; }
+.block-container { max-width: 1440px; padding-top: 1.2rem; padding-bottom: 3rem; }
+:focus-visible { outline: 3px solid var(--amarillo); outline-offset: 2px; }
+
+/* ---------- Cabecera de folleto ---------- */
+.folleto-cabecera {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: stretch;
+  background: var(--rojo);
+  color: var(--blanco);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 2px 4px rgba(20, 33, 61, 0.12), 0 10px 26px rgba(228, 0, 15, 0.18);
+}
+.folleto-cabecera .placa {
+  background: var(--blanco);
+  display: flex;
+  align-items: center;
+  padding: 0.7rem 1.4rem 0.7rem 1.2rem;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+}
+.folleto-cabecera .placa img { height: 58px; width: auto; display: block; }
+.folleto-cabecera .titulo { padding: 0.7rem 1.2rem 0.75rem 1.1rem; align-self: center; }
+.folleto-cabecera h1 {
+  font-family: "Barlow Condensed", sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 2.7rem;
+  line-height: 0.92;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--blanco);
+  margin: 0;
+  padding: 0;
+}
+.folleto-cabecera .sub {
+  display: inline-block;
+  margin-top: 0.35rem;
+  background: var(--amarillo);
+  color: var(--tinta);
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 0.98rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.55rem;
+  transform: skewX(-8deg);
+}
+.folleto-cabecera .sub span { display: inline-block; transform: skewX(8deg); }
+.folleto-cabecera .hoy {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  background: var(--azul);
+  padding: 0.6rem 1.3rem;
+  font-family: "Barlow Condensed", sans-serif;
+  text-transform: uppercase;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.folleto-cabecera .hoy .dia { font-weight: 600; font-size: 0.95rem; letter-spacing: 0.08em; opacity: 0.85; }
+.folleto-cabecera .hoy .fecha { font-weight: 800; font-size: 1.55rem; line-height: 1; }
+
+/* ---------- Mapa ---------- */
+.st-key-plano {
+  background: var(--blanco);
+  border: 2px solid var(--azul);
+  border-radius: 0.6rem;
+  padding: 6px;
+  gap: 0.3rem;
+  overflow: hidden;
+}
+.st-key-plano iframe { display: block; border-radius: 0.35rem; }
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.2rem;
+  padding: 0.35rem 0.3rem 0.15rem;
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 0.84rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--tinta-suave);
+}
+.leyenda span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.leyenda i { display: inline-block; flex: none; }
+.leyenda .l-zonas { width: 42px; height: 6px; border-radius: 3px; background:
+  linear-gradient(90deg, #1FA34A 0 14.3%, #00A9CE 0 28.6%, #2B7DE1 0 42.9%, #7B3FBF 0 57.1%, #FFB000 0 71.4%, #FF6A13 0 85.7%, #E4000F 0); }
+.leyenda .l-ruta { width: 26px; height: 5px; border-radius: 3px; background: var(--azul); }
+.leyenda .l-almacen { width: 14px; height: 14px; border-radius: 50%; background: var(--azul); box-shadow: inset 0 0 0 3px var(--blanco), 0 0 0 2px var(--azul); }
+.leyenda .l-destino { width: 14px; height: 14px; border-radius: 50%; background: var(--rojo); box-shadow: inset 0 0 0 3px var(--blanco), 0 0 0 2px var(--rojo); }
+
+/* ---------- Ficha del porte ---------- */
+.ficha {
+  position: relative;
+  background: var(--blanco);
+  border: 2px solid var(--azul);
+  border-radius: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 4px rgba(20, 33, 61, 0.08), 0 12px 28px rgba(0, 60, 135, 0.12);
+}
+.ficha .franja {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--azul);
+  color: var(--blanco);
+  padding: 0.55rem 1rem 0.5rem;
+  border-radius: 0.45rem 0.45rem 0 0;
+  font-family: "Barlow Condensed", sans-serif;
+  text-transform: uppercase;
+}
+.ficha .franja .que { font-style: italic; font-weight: 800; font-size: 1.35rem; letter-spacing: 0.01em; }
+.ficha .franja .alb { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.05em; }
+.ficha .franja .alb small { font-weight: 600; font-size: 0.78rem; opacity: 0.8; margin-right: 0.35rem; letter-spacing: 0.08em; }
+
+.ficha .oferta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1rem 0.9rem;
+  background: var(--gris);
+  border-bottom: 1px solid var(--linea);
+}
+.burbuja {
+  width: 9.6rem;
+  height: 9.6rem;
+  border-radius: 50%;
+  background: var(--amarillo);
+  border: 5px solid var(--rojo);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-7deg);
+  box-shadow: 0 3px 6px rgba(20, 33, 61, 0.18);
+  font-family: "Barlow Condensed", sans-serif;
+  color: var(--rojo);
+  line-height: 0.85;
+}
+.burbuja .euros { font-weight: 800; font-style: italic; font-size: 3.6rem; letter-spacing: -0.03em; }
+.burbuja .euros sup { font-size: 0.42em; vertical-align: 0.95em; margin-left: 0.04em; letter-spacing: 0; }
+.burbuja .pie { margin-top: 0.3rem; font-weight: 700; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta); }
+
+.ficha .datos-zona { display: grid; gap: 0.55rem; }
+.chip-zona {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-self: start;
+  color: var(--blanco);
+  border-radius: 999px;
+  padding: 0.25rem 0.85rem 0.22rem 0.3rem;
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.chip-zona b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: var(--blanco);
+  font-size: 1.05rem;
+}
+.ficha .km { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 2.1rem; line-height: 1; color: var(--tinta); }
+.ficha .km small { font-size: 0.5em; font-weight: 700; color: var(--tinta-suave); margin-left: 0.15em; }
+.ficha .tiempo { font-size: 0.92rem; color: var(--tinta-suave); }
+
+.ficha dl { display: grid; grid-template-columns: 6.6rem 1fr; margin: 0; }
+.ficha dt, .ficha dd { margin: 0; padding: 0.45rem 1rem; border-bottom: 1px solid var(--linea); }
+.ficha dt {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--azul);
+  padding-top: 0.52rem;
+  padding-right: 0.4rem;
+}
+.ficha dd { font-size: 0.96rem; line-height: 1.35; color: var(--tinta); overflow-wrap: anywhere; }
+.ficha dd .suave { color: var(--tinta-suave); }
+.seccion-tag {
+  display: inline-block;
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--blanco);
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  margin-right: 0.45rem;
+  vertical-align: 0.08em;
+}
+.seccion-tag.exp { background: var(--rojo); }
+.seccion-tag.alm { background: var(--azul); }
+
+.ficha .nota {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  background: var(--amarillo);
+  color: var(--tinta);
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ficha .nota .etq { flex: none; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.ficha .pie-ficha { padding: 0.7rem 1rem 0.8rem; font-size: 0.9rem; color: var(--tinta-suave); line-height: 1.4; }
+
+/* Pegatina de estado: amarilla mientras está pendiente, azul con hora y operario al registrar */
+.pegatina {
+  position: absolute;
+  top: -0.85rem;
+  left: 5.4rem;
+  z-index: 2;
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  text-align: center;
+  padding: 0.4rem 0.75rem 0.38rem;
+  border-radius: 0.3rem;
+  transform: rotate(4deg);
+  box-shadow: 0 2px 5px rgba(20, 33, 61, 0.22);
+}
+.pegatina small { display: block; font-weight: 600; font-size: 0.74rem; letter-spacing: 0.04em; text-transform: none; }
+.pegatina.pendiente { background: var(--amarillo); color: var(--tinta); }
+.pegatina.registrado { background: #157A36; color: var(--blanco); animation: pegar 320ms cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes pegar { from { transform: rotate(14deg) scale(1.35); opacity: 0; } to { transform: rotate(4deg) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pegatina.registrado { animation: none; } }
+
+.ficha.vacia .oferta { grid-template-columns: auto 1fr; }
+.ficha.vacia .burbuja { background: var(--gris); border-color: #B9C3D3; color: #8A96AC; }
+.ficha.vacia .burbuja .euros { font-size: 2.6rem; }
+
+/* ---------- Cuadro de zonas ---------- */
+.cuadro { margin-top: 1rem; background: var(--blanco); border: 2px solid var(--azul); border-radius: 0.6rem; overflow: hidden; font-variant-numeric: tabular-nums; }
+.cuadro table { width: 100%; border-collapse: collapse; }
+.cuadro caption {
+  caption-side: top;
+  text-align: left;
+  background: var(--azul);
+  color: var(--blanco);
+  padding: 0.45rem 1rem;
+  font-family: "Barlow Condensed", sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 1.15rem;
+  text-transform: uppercase;
+}
+.cuadro th, .cuadro td { padding: 0.3rem 1rem; border-bottom: 1px solid var(--linea); text-align: left; font-size: 0.93rem; }
+.cuadro th { font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 0.78rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--tinta-suave); }
+.cuadro .n { text-align: right; }
+.cuadro td.precio { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 1.08rem; color: var(--tinta); }
+.cuadro .z {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  border-radius: 999px;
+  color: var(--blanco);
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: 0.85rem;
+  padding: 0.05rem 0.45rem;
+}
+.cuadro tr.activa td { background: var(--amarillo); font-weight: 700; }
+.cuadro tr.activa td.precio { color: var(--rojo); font-size: 1.2rem; }
+.cuadro tr:last-child td { border-bottom: 0; }
+.cuadro .fuente { padding: 0.45rem 1rem 0.55rem; border-top: 1px solid var(--linea); font-size: 0.82rem; color: var(--tinta-suave); line-height: 1.35; background: var(--gris); }
+
+/* ---------- Hoja de pedido (barra lateral azul) ---------- */
+[data-testid="stSidebarUserContent"] { padding-top: 1.1rem; }
+.seccion-hoja {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: "Barlow Condensed", sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  color: var(--blanco);
+  margin: 1rem 0 0.2rem;
+}
+.seccion-hoja .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--amarillo);
+  color: var(--azul);
+  font-style: normal;
+  font-size: 0.95rem;
+}
+.seccion-hoja.primera { margin-top: 0; }
+[data-testid="stWidgetLabel"] p {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 0.84rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p { color: #CFE0F7; }
+[data-testid="stSidebar"] input::placeholder, [data-testid="stSidebar"] textarea::placeholder { color: #A9C2E6; opacity: 1; }
+.operario-ok { margin: -0.4rem 0 0.2rem; font-size: 0.92rem; color: var(--amarillo); font-weight: 700; }
+.operario-ko { margin: -0.4rem 0 0.2rem; font-size: 0.92rem; color: var(--blanco); font-weight: 700; }
+.operario-ko::before { content: ""; display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--rojo); box-shadow: 0 0 0 2px var(--blanco); margin-right: 0.45rem; }
+
+/* Avisos de la hoja: blanco con texto rojo, legibles sobre el azul */
+[data-testid="stSidebar"] [data-testid="stAlert"] > div { background: var(--blanco) !important; border: 2px solid var(--rojo); }
+[data-testid="stSidebar"] [data-testid="stAlert"] p { color: var(--rojo-hondo) !important; font-weight: 600; }
+
+/* Botones de folleto */
+[data-testid="stBaseButton-primary"] {
+  min-height: 3rem;
+  box-shadow: 0 2px 0 var(--rojo-hondo);
+  transition: background-color 150ms ease-out, transform 120ms ease-out;
+}
+[data-testid="stBaseButton-primary"]:hover { background-color: var(--rojo-hondo); border-color: var(--rojo-hondo); }
+[data-testid="stBaseButton-primary"]:active { transform: translateY(1px); }
+[data-testid="stBaseButton-primary"] p {
+  font-family: "Barlow Condensed", sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+[data-testid="stBaseButton-primary"]:disabled { box-shadow: none; }
+
+.notas-conexion { margin-top: 1.3rem; padding-top: 0.6rem; border-top: 1px solid #3F6DB0; font-size: 0.84rem; color: #CFE0F7; line-height: 1.4; }
+.notas-conexion p { margin: 0 0 0.35rem; }
+
+@media (max-width: 720px) {
+  .folleto-cabecera { grid-template-columns: 1fr; }
+  .folleto-cabecera .placa { clip-path: none; justify-content: center; }
+  .folleto-cabecera .hoy { align-items: flex-start; text-align: left; }
+  .folleto-cabecera h1 { font-size: 2.2rem; }
+  .ficha .oferta { grid-template-columns: 1fr; justify-items: center; }
+  .pegatina { position: static; display: block; margin: 0.6rem 1rem 0.2rem; transform: none; }
+  .pegatina.registrado { animation: none; }
+}
+
+/* Ajustes de la ficha vacía y del cuadro */
+.ficha.vacia .burbuja { width: 7rem; height: 7rem; border-width: 4px; }
+.cuadro td.precio { white-space: nowrap; }

@@ -1,0 +1,34 @@
+[theme]
+base = "light"
+# "Folleto de ofertas BigMat": rojo, amarillo y azul BigMat a bloques sobre blanco
+primaryColor = "#E4000F"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"
+textColor = "#14213D"
+linkColor = "#003C87"
+borderColor = "#C9D1DE"
+showWidgetBorder = true
+baseRadius = "0.4rem"
+buttonRadius = "0.4rem"
+font = "Barlow:https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+headingFont = "Barlow Condensed:https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&display=swap"
+headingFontWeights = [800, 800, 700, 700, 600, 600]
+baseFontSize = 15
+redColor = "#E4000F"
+blueColor = "#003C87"
+yellowColor = "#FFD400"
+greenColor = "#1FA34A"
+
+# Barra lateral: hoja de pedido en azul BigMat, campos en azul claro con texto blanco
+[theme.sidebar]
+backgroundColor = "#003C87"
+secondaryBackgroundColor = "#0B4FA3"
+textColor = "#FFFFFF"
+borderColor = "#5C86C4"
+primaryColor = "#E4000F"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

@@ -1,5 +1,8 @@
 import os
 import math
+import base64
+import html
+from pathlib import Path
 import requests
 import streamlit as st
 import folium
@@ -7,6 +10,10 @@ from folium import Map, Marker, Circle, PolyLine, Element
 from streamlit_folium import st_folium
 import flexpolyline as fp
 from datetime import datetime
+
+st.set_page_config(
+    page_title="Portes · BigMat Rodríguez", page_icon=":material/local_shipping:", layout="wide",
+)
 
 try:
     from zoneinfo import ZoneInfo
@@ -306,37 +313,164 @@ def human_duration(seconds: int) -> str:
         return f"{m}m {s}s"
     return f"{s}s"
 
-def add_zone_circles(m, center_lat, center_lon):
-    Circle(radius=ZONA_1_KM * 1000, location=[center_lat, center_lon], color="green",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 1 (≤{ZONA_1_KM:g} km): {PRECIO_ZONA_1} €").add_to(m)
-    Circle(radius=ZONA_2_KM * 1000, location=[center_lat, center_lon], color="orange",
-           fill=True, fill_opacity=0.10, tooltip=f"Zona 2 (≤{ZONA_2_KM:g} km): {PRECIO_ZONA_2} €").add_to(m)
-    Circle(radius=ZONA_3_KM * 1000, location=[center_lat, center_lon], color="blue",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 3 (≤{ZONA_3_KM:g} km): {PRECIO_ZONA_3} €").add_to(m)
-    Circle(radius=ZONA_4_KM * 1000, location=[center_lat, center_lon], color="purple",
-           fill=True, fill_opacity=0.05, tooltip=f"Zona 4 (≤{ZONA_4_KM:g} km): {PRECIO_ZONA_4} €").add_to(m)
-    Circle(radius=ZONA_5_KM * 1000, location=[center_lat, center_lon], color="red",
-           fill=True, fill_opacity=0.03, tooltip=f"Zona 5 (≤{ZONA_5_KM:g} km): {PRECIO_ZONA_5} €").add_to(m)
-    Circle(radius=ZONA_6_KM * 1000, location=[center_lat, center_lon], color="brown",
-           fill=True, fill_opacity=0.03, tooltip=f"Zona 6 (≤{ZONA_6_KM:g} km): {PRECIO_ZONA_6} €").add_to(m)
-    Circle(radius=ZONA_7_KM * 1000, location=[center_lat, center_lon], color="gray",
-           fill=True, fill_opacity=0.03, tooltip=f"Zona 7 (≤{ZONA_7_KM:g} km): {PRECIO_ZONA_7} €").add_to(m)
+def zonas():
+    """Las siete zonas vigentes como (límite en km, precio)."""
+    return [
+        (ZONA_1_KM, PRECIO_ZONA_1), (ZONA_2_KM, PRECIO_ZONA_2), (ZONA_3_KM, PRECIO_ZONA_3),
+        (ZONA_4_KM, PRECIO_ZONA_4), (ZONA_5_KM, PRECIO_ZONA_5), (ZONA_6_KM, PRECIO_ZONA_6),
+        (ZONA_7_KM, PRECIO_ZONA_7),
+    ]
 
-def legend_html():
-    return f"""
-    <div style="position: fixed; bottom: 25px; left: 25px; width: 260px;
-    border:2px solid #888; background: white; z-index:9999; font-size:14px; padding:8px;">
-    <b>Tarifas</b><br>
-    Zona 1 (≤{ZONA_1_KM:g} km): {PRECIO_ZONA_1} €<br>
-    Zona 2 (≤{ZONA_2_KM:g} km): {PRECIO_ZONA_2} €<br>
-    Zona 3 (≤{ZONA_3_KM:g} km): {PRECIO_ZONA_3} €<br>
-    Zona 4 (≤{ZONA_4_KM:g} km): {PRECIO_ZONA_4} €<br>
-    Zona 5 (≤{ZONA_5_KM:g} km): {PRECIO_ZONA_5} €<br>
-    Zona 6 (≤{ZONA_6_KM:g} km): {PRECIO_ZONA_6} €<br>
-    Zona 7 (≤{ZONA_7_KM:g} km): {PRECIO_ZONA_7} €<br>
-    +{PRECIO_POR_KM_EXTRA} €/km extra a partir de {ZONA_7_KM:g} km
-    </div>
-    """
+def zona_de(distance_km):
+    """Número de zona (1-7) para una distancia, o None si pasa de la última."""
+    for i, (limite, _) in enumerate(zonas(), start=1):
+        if distance_km <= limite:
+            return i
+    return None
+
+def num_es(valor, decimales=2):
+    """Número con coma decimal y sin ceros sobrantes: 1.5 → "1,5", 60.0 → "60"."""
+    texto = f"{valor:,.{decimales}f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+    if "," in texto:
+        texto = texto.rstrip("0").rstrip(",")
+    return texto
+
+def euros(valor):
+    return f"{valor:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+
+def minutos(segundos):
+    total = max(1, round(segundos / 60))
+    h, m = divmod(total, 60)
+    return f"{h} h {m:02d} min" if h else f"{m} min"
+
+# Color fijo de cada zona, de la más cercana (verde) a la más lejana (rojo BigMat).
+# Es el mismo en el mapa, en la ficha del porte y en el cuadro de zonas.
+COLORES_ZONA = ["#1FA34A", "#00A9CE", "#2B7DE1", "#7B3FBF", "#FFB000", "#FF6A13", "#E4000F"]
+COLOR_FUERA = "#14213D"
+
+def color_zona(zona):
+    return COLORES_ZONA[zona - 1] if zona else COLOR_FUERA
+
+# Estilos dentro del iframe del mapa: las reglas de estilo.css no llegan ahí.
+MAPA_ESTILO = """
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  .leaflet-container { background: #F4F6FA; font-family: "Barlow Condensed", sans-serif; }
+  /* Callejero apagado para que manden los colores de las zonas. */
+  .leaflet-tile-pane { filter: grayscale(1) contrast(.7) brightness(1.16); }
+  .cota-icon { background: none; border: 0; }
+  .cota {
+    display: inline-block; transform: translate(-50%, -50%); white-space: nowrap;
+    font: 800 12px/1 "Barlow Condensed", sans-serif; letter-spacing: .04em; color: #fff;
+    padding: 4px 8px 3px; border-radius: 999px; box-shadow: 0 1px 3px rgba(20,33,61,.3);
+  }
+  .cota.activa { font-size: 15px; padding: 5px 11px 4px; outline: 3px solid #FFD400; }
+  .punto { display: flex; flex-direction: column; align-items: center; gap: 3px; transform: translate(-50%, -9px); white-space: nowrap; }
+  .punto b {
+    font: 800 12px/1 "Barlow Condensed", sans-serif; letter-spacing: .06em; text-transform: uppercase;
+    color: #fff; background: #003C87; padding: 4px 7px 3px; border-radius: 4px;
+  }
+  .punto.destino b { background: #E4000F; }
+  .leaflet-control-scale-line { border-color: #14213D; color: #14213D; background: rgba(255,255,255,.9); font: 700 11px "Barlow Condensed", sans-serif; }
+  .leaflet-bar { border: 2px solid #003C87 !important; box-shadow: none !important; }
+  .leaflet-bar a { color: #003C87; font-weight: 700; }
+</style>
+"""
+
+SIMBOLO_ALMACEN = (
+    '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">'
+    '<circle cx="9" cy="9" r="7.5" fill="#fff" stroke="#003C87" stroke-width="3"/>'
+    '<circle cx="9" cy="9" r="3" fill="#003C87"/></svg>'
+)
+SIMBOLO_DESTINO = (
+    '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">'
+    '<circle cx="9" cy="9" r="7.5" fill="#fff" stroke="#E4000F" stroke-width="3"/>'
+    '<circle cx="9" cy="9" r="3" fill="#E4000F"/></svg>'
+)
+
+def lon_offset(lat, km):
+    return km / (111.32 * math.cos(math.radians(lat)))
+
+def plano_mapa(result=None):
+    """Mapa del porte: un anillo de color por zona, la zona aplicada rellena y la ruta."""
+    m = Map(location=[ORIGIN_LAT, ORIGIN_LON], zoom_start=12, control_scale=True)
+    m.get_root().header.add_child(Element(MAPA_ESTILO))
+
+    activa = zona_de(result["distancia_km"]) if result else None
+    # Radio de la zona aplicada o, sin cálculo, de la zona 4; fuera de zonas,
+    # el punto de la ruta más alejado del almacén.
+    radio_vista = zonas()[(activa or 4) - 1][0]
+    if result and not activa:
+        radio_vista = max(
+            math.hypot((lat - ORIGIN_LAT) * 110.574, (lon - ORIGIN_LON) * 111.32 * math.cos(math.radians(ORIGIN_LAT)))
+            for lat, lon in result["coords"]
+        )
+    for i, (limite, precio) in enumerate(zonas(), start=1):
+        es_activa = i == activa
+        color = color_zona(i)
+        # Solo la zona aplicada lleva relleno: en folium, pasar fill_color fuerza
+        # el relleno aunque fill=False, así que solo se pasa en ese caso.
+        relleno = {"fill": True, "fill_color": color, "fill_opacity": 0.14} if es_activa else {"fill": False}
+        Circle(
+            location=[ORIGIN_LAT, ORIGIN_LON], radius=limite * 1000,
+            color=color, weight=6 if es_activa else 3, opacity=1 if es_activa else 0.85,
+            interactive=False, **relleno,
+        ).add_to(m)
+        # Rótulos alternos a este y oeste para que no se pisen los anillos cercanos;
+        # los anillos muy pequeños para el encuadre no se rotulan (están en el cuadro).
+        if not es_activa and limite < radio_vista * 0.35:
+            continue
+        sentido = 1 if i % 2 else -1
+        Marker(
+            [ORIGIN_LAT, ORIGIN_LON + sentido * lon_offset(ORIGIN_LAT, limite)],
+            icon=folium.DivIcon(
+                html=(f'<span class="cota{" activa" if es_activa else ""}" style="background:{color}">'
+                      f'Z{i} · {num_es(limite)} km · {precio} €</span>'),
+                icon_size=(0, 0), class_name="cota-icon",
+            ),
+            interactive=False,
+        ).add_to(m)
+
+    if result:
+        PolyLine(result["coords"], color="#FFFFFF", weight=10, opacity=0.95).add_to(m)
+        PolyLine(result["coords"], color="#003C87", weight=5, opacity=1).add_to(m)
+        Marker(
+            [result["dest"][0], result["dest"][1]], tooltip=result["dest"][2],
+            icon=folium.DivIcon(
+                html=f'<div class="punto destino">{SIMBOLO_DESTINO}<b>Destino</b></div>',
+                icon_size=(0, 0), class_name="cota-icon",
+            ),
+        ).add_to(m)
+
+    Marker(
+        [ORIGIN_LAT, ORIGIN_LON], tooltip="Almacén (origen de los portes)",
+        icon=folium.DivIcon(
+            html=f'<div class="punto">{SIMBOLO_ALMACEN}<b>Almacén</b></div>',
+            icon_size=(0, 0), class_name="cota-icon",
+        ),
+    ).add_to(m)
+
+    # Encuadre: la zona aplicada y la siguiente, para ver el salto de precio. Se
+    # calcula el zoom en lugar de usar fit_bounds porque Leaflet encuadra mal si el
+    # iframe aún no tiene su tamaño definitivo (pasaba al volver a pintar la página).
+    radio_encuadre = radio_vista
+    if activa and activa < len(zonas()):
+        radio_encuadre = min(zonas()[activa][0], radio_vista * 1.6)
+    metros_por_px_z0 = 156543.03 * math.cos(math.radians(ORIGIN_LAT))
+    zoom = math.log2(metros_por_px_z0 * 560 / (radio_encuadre * 2000 * 1.08))
+    zoom = max(8, min(16, math.floor(zoom * 4) / 4))
+    mapa = m.get_name()
+    # Se reencuadra solo al cargar; al redimensionar se recalcula el tamaño sin
+    # deshacer el zoom que haya elegido quien lo está mirando.
+    m.get_root().script.add_child(Element(
+        f"function encuadrar() {{ {mapa}.invalidateSize(); {mapa}.setView([{ORIGIN_LAT}, {ORIGIN_LON}], {zoom}); }}"
+        f"setTimeout(encuadrar, 150); setTimeout(encuadrar, 700);"
+        f"window.addEventListener('resize', function () {{ {mapa}.invalidateSize(); }});"
+    ))
+    m.options["zoom"] = zoom
+    m.options["zoomSnap"] = 0.25
+
+    st_folium(m, height=640, use_container_width=True, returned_objects=[], key="plano-mapa")
 
 def madrid_now_iso():
     if ZoneInfo is not None:
@@ -408,157 +542,226 @@ def log_to_sheets(row: dict):
 # =========================================================
 # INTERFAZ
 # =========================================================
-st.set_page_config(page_title="Cálculo de porte (camión)", layout="wide")
-st.title("🚚 Cálculo de porte por ruta (HERE)")
+CARPETA = Path(__file__).parent
+st.markdown(f"<style>{(CARPETA / 'estilo.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+LOGO = base64.b64encode((CARPETA / "assets" / "bigmat-rodriguez.png").read_bytes()).decode()
+
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+         "septiembre", "octubre", "noviembre", "diciembre"]
+
+def fecha_larga(d):
+    return f"{DIAS[d.weekday()]} {d.day} de {MESES[d.month - 1]} de {d.year}"
+
+def esc(texto):
+    return html.escape(str(texto))
+
+def rotulo_seccion(numero, texto):
+    st.markdown(
+        f'<div class="seccion-hoja{" primera" if numero == 1 else ""}"><span class="num">{numero}</span>{texto}</div>',
+        unsafe_allow_html=True,
+    )
+
+def burbuja_html(precio):
+    enteros, decimales = euros(precio).split(",")
+    return (f'<div class="burbuja"><div class="euros">{enteros}<sup>,{decimales} €</sup></div>'
+            f'<div class="pie">Precio del porte</div></div>')
+
+def chip_zona_html(zona):
+    if zona:
+        return (f'<span class="chip-zona" style="background:{color_zona(zona)}">'
+                f'<b style="color:{color_zona(zona)}">Z{zona}</b>Zona {zona}</span>')
+    return (f'<span class="chip-zona" style="background:{COLOR_FUERA}">'
+            f'<b style="color:{COLOR_FUERA}">+</b>Más de {num_es(ZONA_7_KM)} km</span>')
+
+def ficha_vacia_html():
+    return """
+<div class="ficha vacia">
+  <div class="franja"><span class="que">Nuevo porte</span><span class="alb">Sin calcular</span></div>
+  <div class="oferta">
+    <div class="burbuja"><div class="euros">— €</div><div class="pie">Precio del porte</div></div>
+    <div class="pie-ficha">
+      Rellena la hoja de pedido de la izquierda y pulsa <strong>Calcular ruta y precio</strong>.
+      Aquí aparecerán el precio, la zona y los datos del porte para revisarlos antes de guardarlos.
+    </div>
+  </div>
+</div>"""
+
+def ficha_html(r):
+    activa = zona_de(r["distancia_km"])
+    exp = r["seccion"].startswith("Exposición")
+    tag = f'<span class="seccion-tag {"exp" if exp else "alm"}">{"EXP" if exp else "ALM"}</span>'
+    albaran = esc(r["albaran"]) if r["albaran"] else "Sin albarán"
+    if r["saved"]:
+        hora = r.get("saved_at", "")
+        pegatina = (f'<div class="pegatina registrado">Registrado'
+                    f'<small>{esc(hora)} · {esc(r["operario_nombre"])}</small></div>')
+    else:
+        pegatina = '<div class="pegatina pendiente">Pendiente<small>de guardar</small></div>'
+    nota = ""
+    if r["anotaciones"]:
+        nota = f'<div class="nota"><span class="etq">Anotaciones</span><span>{esc(r["anotaciones"])}</span></div>'
+    operario = esc(r["operario_nombre"])
+    if r["operario_nombre"] != r["operario_codigo"]:
+        operario += f' <span class="suave">· cód. {esc(r["operario_codigo"])}</span>'
+    return f"""
+<div class="ficha">
+  {pegatina}
+  <div class="franja"><span class="que">Porte</span><span class="alb"><small>Albarán</small>{albaran}</span></div>
+  <div class="oferta">
+    {burbuja_html(r["price"])}
+    <div class="datos-zona">
+      {chip_zona_html(activa)}
+      <div class="km">{num_es(r["distancia_km"])}<small>km</small></div>
+      <div class="tiempo">en camión desde el almacén · {minutos(r["duration_s"])}</div>
+    </div>
+  </div>
+  {nota}
+  <dl>
+    <dt>Sección</dt><dd>{tag}{esc(r["seccion"])}</dd>
+    <dt>Fecha</dt><dd>{fecha_larga(r["fecha_porte"]).capitalize()}</dd>
+    <dt>Cliente</dt><dd>{esc(r["cliente_nombre"])}</dd>
+    <dt>Teléfono</dt><dd>{esc(r["cliente_telefono"])}</dd>
+    <dt>Operario</dt><dd>{operario}</dd>
+    <dt>Destino</dt><dd>{esc(r["dest"][2])}</dd>
+  </dl>
+</div>"""
+
+def cuadro_zonas_html(activa=None, fuera=False):
+    filas = []
+    desde = 0
+    for i, (limite, precio) in enumerate(zonas(), start=1):
+        clase = ' class="activa"' if i == activa else ""
+        filas.append(
+            f'<tr{clase}><td><span class="z" style="background:{color_zona(i)}">Z{i}</span></td>'
+            f'<td>{num_es(desde)} – {num_es(limite)} km</td><td class="n precio">{precio} €</td></tr>'
+        )
+        desde = limite
+    clase = ' class="activa"' if fuera else ""
+    filas.append(
+        f'<tr{clase}><td><span class="z" style="background:{COLOR_FUERA}">+Z7</span></td>'
+        f'<td>Más de {num_es(ZONA_7_KM)} km</td>'
+        f'<td class="n precio">{PRECIO_ZONA_7} € +{num_es(PRECIO_POR_KM_EXTRA)} €/km</td></tr>'
+    )
+    if REMOTE_CFG:
+        fuente = "Tarifas de la hoja de control. Para cambiarlas, edita esa hoja, no la app."
+    else:
+        fuente = "No se pudo leer la hoja de control: se usan las tarifas por defecto del código."
+    return f"""
+<div class="cuadro">
+  <table>
+    <caption>Tarifas por zona</caption>
+    <thead><tr><th>Zona</th><th>Distancia</th><th class="n">Precio</th></tr></thead>
+    <tbody>{"".join(filas)}</tbody>
+  </table>
+  <div class="fuente">{fuente}</div>
+</div>"""
+
+LEYENDA_HTML = """
+<div class="leyenda">
+  <span><i class="l-zonas"></i>Zonas 1 a 7</span>
+  <span><i class="l-ruta"></i>Ruta del camión</span>
+  <span><i class="l-almacen"></i>Almacén</span>
+  <span><i class="l-destino"></i>Destino</span>
+</div>"""
 
 api_key = get_api_key()
-if not api_key:
-    st.warning("Configura tu HERE_API_KEY en **st.secrets** o variable de entorno HERE_API_KEY.")
+logs_ok = bool(st.secrets.get("LOGS_SHEET_ID", ""))
 
 with st.sidebar:
-    st.header("⚙️ Configuración")
-
-    st.subheader("Origen (fijo)")
-    st.text_input("Dirección de origen", value=ORIGIN_ADDRESS, disabled=True)
-    col_o1, col_o2 = st.columns(2)
-    with col_o1:
-        st.number_input("Origen lat", value=ORIGIN_LAT, format="%.6f", disabled=True)
-    with col_o2:
-        st.number_input("Origen lon", value=ORIGIN_LON, format="%.6f", disabled=True)
-
-    st.markdown("---")
-    st.subheader("Datos del porte")
+    rotulo_seccion(1, "Datos del porte")
     seccion = st.radio("Sección", SECCIONES, index=None)
     albaran = st.text_input(
         "Número de albarán (opcional)", value="",
         placeholder="A01/T01… almacén · A02/T02… exposición",
     )
     fecha_porte = st.date_input("Fecha del porte", value=None, format="DD/MM/YYYY")
-    cliente_nombre = st.text_input("Nombre del cliente", value="")
-    cliente_telefono = st.text_input("Teléfono del cliente", value="")
     operario_codigo = st.text_input("Código de operario", value="")
     operario_nombre = OPERARIOS.get(normalize_operario(operario_codigo), "")
     if operario_nombre:
-        st.caption(f"👤 {operario_nombre}")
+        st.markdown(f'<p class="operario-ok">{esc(operario_nombre)}</p>', unsafe_allow_html=True)
     elif operario_codigo.strip() and OPERARIOS:
-        st.caption("⚠️ Código de operario no encontrado.")
+        st.markdown('<p class="operario-ko">Código de operario no encontrado</p>', unsafe_allow_html=True)
+
+    rotulo_seccion(2, "Cliente")
+    cliente_nombre = st.text_input("Nombre del cliente", value="")
+    cliente_telefono = st.text_input("Teléfono del cliente", value="")
+
+    rotulo_seccion(3, "Destino")
+    dest_address = st.text_input("Dirección destino", value="")
+    dest_postal = st.text_input("Código postal (opcional)", value="")
+    dest_city = st.text_input("Población (opcional)", value="Madrid")
     anotaciones = st.text_area(
         "Anotaciones (opcional)", value="",
         placeholder="Ej.: solo se puede entrar hasta las 12:00",
     )
 
-    st.markdown("---")
-    st.subheader("Destino")
-    dest_address = st.text_input("Dirección destino", value="")
-    dest_postal = st.text_input("Código postal (opcional)", value="")
-    dest_city = st.text_input("Población (opcional)", value="Madrid")
+    go = st.button("Calcular ruta y precio", type="primary", use_container_width=True)
+    aviso = st.empty()
 
-    go = st.button("Calcular ruta y precio", type="primary")
-
-    st.markdown("---")
-    st.subheader("Tarifas (solo lectura)")
-    if REMOTE_CFG:
-        st.caption("Cargadas desde la hoja de control. Para cambiarlas, edita esa hoja, no la app.")
-    else:
-        st.caption("⚠️ No se pudo leer la hoja de control: se están usando los valores por defecto del código.")
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.number_input("Zona 1 (km)", value=float(ZONA_1_KM), step=0.1, format="%.1f", disabled=True)
-        st.number_input("Zona 2 (km)", value=float(ZONA_2_KM), step=0.1, format="%.1f", disabled=True)
-        st.number_input("Zona 3 (km)", value=float(ZONA_3_KM), step=0.1, format="%.1f", disabled=True)
-        st.number_input("Zona 4 (km)", value=float(ZONA_4_KM), step=0.1, format="%.1f", disabled=True)
-    with col_b:
-        st.number_input("Zona 5 (km)", value=float(ZONA_5_KM), step=0.1, format="%.1f", disabled=True)
-        st.number_input("Zona 6 (km)", value=float(ZONA_6_KM), step=0.1, format="%.1f", disabled=True)
-        st.number_input("Zona 7 (km)", value=float(ZONA_7_KM), step=0.1, format="%.1f", disabled=True)
-
-    st.number_input("Precio Zona 1 (€)", value=PRECIO_ZONA_1, step=1, disabled=True)
-    st.number_input("Precio Zona 2 (€)", value=PRECIO_ZONA_2, step=1, disabled=True)
-    st.number_input("Precio Zona 3 (€)", value=PRECIO_ZONA_3, step=1, disabled=True)
-    st.number_input("Precio Zona 4 (€)", value=PRECIO_ZONA_4, step=1, disabled=True)
-    st.number_input("Precio Zona 5 (€)", value=PRECIO_ZONA_5, step=1, disabled=True)
-    st.number_input("Precio Zona 6 (€)", value=PRECIO_ZONA_6, step=1, disabled=True)
-    st.number_input("Precio Zona 7 (€)", value=PRECIO_ZONA_7, step=1, disabled=True)
-    st.number_input("€ por km extra (a partir de Zona 7)", value=float(PRECIO_POR_KM_EXTRA), step=0.1, disabled=True)
-
-    # Nota: ZONA_*_KM y PRECIO_* ya NO se reasignan desde el sidebar.
-    # Los únicos valores que se usan en el cálculo son los que vienen de
-    # REMOTE_CFG (hoja de control) o, en su defecto, las constantes del código.
-
-    st.markdown("---")
-    logs_ok = bool(st.secrets.get("LOGS_SHEET_ID", ""))
-    if logs_ok:
-        st.caption("📝 Tras calcular, podrás confirmar el guardado en Google Sheets con un botón.")
-    else:
-        st.caption("⚠️ Registro en Sheets desactivado: falta 'LOGS_SHEET_ID' en Secrets.")
-
+    notas = ["Los portes se calculan siempre desde el almacén, en ruta de camión."]
+    if not logs_ok:
+        notas.append("Registro en Sheets desactivado: falta 'LOGS_SHEET_ID' en Secrets.")
+    st.markdown(
+        '<div class="notas-conexion">' + "".join(f"<p>{n}</p>" for n in notas) + "</div>",
+        unsafe_allow_html=True,
+    )
     if REMOTE_CONTROL_ID:
-        with st.expander("🔧 Configuración remota (debug)"):
+        with st.expander("Configuración remota (debug)"):
             st.write("CONTROL_SHEET_ID:", REMOTE_CONTROL_ID)
             st.json(REMOTE_CFG)
 
-map_col, info_col = st.columns([2, 1])
-
-if go:
+def validar():
+    """Devuelve el primer error de la hoja de datos, o None si está completa."""
     if not api_key:
-        st.error("Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno.")
-        st.stop()
-
+        return "Falta HERE_API_KEY. Añádelo en la sección de secretos o como variable de entorno."
     if not seccion:
-        st.error("Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular.")
-        st.stop()
-
-    albaran = albaran.strip().upper()
+        return "Selecciona la sección (Exposición Vital Aza o Almacén Ezequiel Solana) antes de calcular."
     prefijos = ALBARAN_PREFIJOS[seccion]
-    if albaran and not any(albaran.startswith(p) and len(albaran) > len(p) for p in prefijos):
-        st.error(
+    alb = albaran.strip().upper()
+    if alb and not any(alb.startswith(p) and len(alb) > len(p) for p in prefijos):
+        return (
             f"El número de albarán de {seccion} debe empezar por {' o '.join(prefijos)} "
             f"(por ejemplo, {prefijos[0]}1234)."
         )
-        st.stop()
-
     if not fecha_porte:
-        st.error("Indica la fecha en la que se va a realizar el porte antes de calcular.")
-        st.stop()
-
-    if not cliente_telefono.strip():
-        st.error("Introduce el teléfono del cliente antes de calcular.")
-        st.stop()
-
-    if not cliente_nombre.strip() or not operario_codigo.strip():
-        st.error("Introduce el nombre del cliente y el código de operario antes de calcular.")
-        st.stop()
-
+        return "Indica la fecha en la que se va a realizar el porte antes de calcular."
+    if not operario_codigo.strip():
+        return "Introduce el código de operario antes de calcular."
     if OPERARIOS and not operario_nombre:
-        st.error("El código de operario no está en la pestaña 'operarios' de la hoja de control.")
-        st.stop()
+        return "El código de operario no está en la pestaña 'operarios' de la hoja de control."
+    if not cliente_nombre.strip():
+        return "Introduce el nombre del cliente antes de calcular."
+    if not cliente_telefono.strip():
+        return "Introduce el teléfono del cliente antes de calcular."
+    if not dest_address.strip():
+        return "Introduce la dirección de destino antes de calcular."
+    return None
+
+def calcular():
+    """Calcula ruta y precio y deja el porte pendiente de guardar. Devuelve un error o None."""
+    global operario_nombre
+    alb = albaran.strip().upper()
     if not OPERARIOS:
         # Sin lista de operarios no se puede traducir: se guarda el código.
         operario_nombre = operario_codigo.strip()
 
-    if not dest_address.strip():
-        st.error("Introduce la dirección de destino antes de calcular.")
-        st.stop()
-
-    with st.spinner("Geocodificando dirección de destino..."):
+    with st.spinner("Buscando la dirección de destino…"):
         try:
             dlat, dlon, dtitle, dacc_lat, dacc_lon = geocode_address(
                 dest_address, api_key, postal_code=dest_postal or None, city=dest_city or None
             )
             dest = (dacc_lat, dacc_lon, dtitle)
         except Exception as e:
-            st.error(f"Error geocodificando: {e}")
-            st.stop()
+            return f"No se encontró la dirección de destino: {e}"
 
-    with st.spinner("Calculando ruta para camión..."):
+    with st.spinner("Calculando la ruta del camión…"):
         try:
             coords, length_m, duration_s = truck_route(
                 (ORIGIN_LAT, ORIGIN_LON), (dest[0], dest[1]), api_key
             )
         except Exception as e:
-            st.error(f"Error calculando ruta: {e}")
-            st.stop()
+            return f"No se pudo calcular la ruta del camión: {e}"
 
     distancia_km = round(length_m / 1000.0, 2)
     dur = human_duration(duration_s)
@@ -599,14 +802,13 @@ if go:
         # El apóstrofo hace que Sheets lo guarde como texto y no se pierdan
         # el "+" del prefijo ni los ceros iniciales.
         "cliente_telefono": f"'{cliente_telefono.strip()}",
-        "albaran": albaran,
+        "albaran": alb,
     }
 
-    # Ya NO se registra automáticamente aquí. Se guarda el "row" para que el
-    # usuario lo confirme con el botón "Guardar porte en Google Sheets".
+    # No se registra aquí: el "row" espera a que el usuario confirme con el botón.
     st.session_state["result"] = {
         "seccion": seccion,
-        "albaran": albaran,
+        "albaran": alb,
         "fecha_porte": fecha_porte,
         "anotaciones": anotaciones.strip(),
         "cliente_nombre": cliente_nombre.strip(),
@@ -616,6 +818,7 @@ if go:
         "dest": dest,
         "coords": coords,
         "distancia_km": distancia_km,
+        "duration_s": int(duration_s),
         "dur": dur,
         "price": price,
         "row": row,
@@ -623,59 +826,71 @@ if go:
         "log_ok": None,
         "log_err": None,
     }
+    return None
+
+if go:
+    # Un cálculo nuevo descarta el anterior, para no confundir datos viejos con los nuevos.
+    st.session_state["result"] = None
+    error = validar() or calcular()
+    if error:
+        aviso.error(error)
 
 result = st.session_state.get("result")
 
-if result:
-    with info_col:
-        st.subheader("Resultado")
-        st.metric("Distancia (km)", result["distancia_km"])
-        st.metric("Duración", result["dur"])
-        st.metric("Precio (€)", f"{result['price']:.2f}")
-        st.caption(f"Sección: **{result['seccion']}**")
-        if result["albaran"]:
-            st.caption(f"Albarán: **{result['albaran']}**")
-        st.caption(f"Fecha del porte: **{result['fecha_porte']:%d/%m/%Y}**")
-        st.caption(f"Cliente: **{result['cliente_nombre']}**")
-        st.caption(f"Teléfono: **{result['cliente_telefono']}**")
-        st.caption(f"Operario: **{result['operario_nombre']}**")
-        st.caption(f"Destino: **{result['dest'][2]}**")
-        st.caption(f"Origen: **{ORIGIN_ADDRESS}**")
-        if result["anotaciones"]:
-            st.warning(f"📝 Anotaciones: {result['anotaciones']}")
+HOY = datetime.now(ZoneInfo("Europe/Madrid")) if ZoneInfo else datetime.now()
+st.markdown(
+    f"""
+<div class="folleto-cabecera">
+  <div class="placa"><img src="data:image/png;base64,{LOGO}" alt="BigMat Rodríguez"></div>
+  <div class="titulo">
+    <h1>Portes a obra y domicilio</h1>
+    <div class="sub"><span>Cálculo y registro de portes en camión</span></div>
+  </div>
+  <div class="hoy"><span class="dia">{DIAS[HOY.weekday()]}</span><span class="fecha">{HOY:%d/%m/%Y}</span></div>
+</div>""",
+    unsafe_allow_html=True,
+)
+if not api_key:
+    st.error("Configura tu HERE_API_KEY en **st.secrets** o en la variable de entorno HERE_API_KEY.")
 
-        st.markdown("---")
+col_plano, col_cajetin = st.columns([1.85, 1], gap="large")
+
+with col_plano:
+    with st.container(key="plano"):
+        plano_mapa(result)
+        st.markdown(LEYENDA_HTML, unsafe_allow_html=True)
+
+with col_cajetin:
+    if result:
+        st.markdown(ficha_html(result), unsafe_allow_html=True)
         if result["saved"]:
-            st.success("✅ Porte guardado en Google Sheets.")
             if result["log_err"]:
                 st.warning(result["log_err"])
+        elif not logs_ok:
+            st.button("Confirmar y guardar porte", type="primary", use_container_width=True, disabled=True)
+            st.info(
+                "No se puede guardar: la app no tiene configurada la hoja de portes (falta 'LOGS_SHEET_ID'). "
+                "Avisa a quien mantiene la app."
+            )
         else:
-            if st.button("💾 Confirmar y guardar porte", type="primary"):
-                log_ok, log_err = log_to_sheets(result["row"])
+            if st.button("Confirmar y guardar porte", type="primary", use_container_width=True):
+                with st.spinner("Guardando en la hoja de portes…"):
+                    log_ok, log_err = log_to_sheets(result["row"])
                 result["log_ok"] = log_ok
                 result["log_err"] = log_err
                 result["saved"] = log_ok
+                if log_ok:
+                    ahora = datetime.now(ZoneInfo("Europe/Madrid")) if ZoneInfo else datetime.now()
+                    result["saved_at"] = f"{ahora:%d/%m %H:%M}"
                 st.session_state["result"] = result
                 st.rerun()
-
             if result["log_ok"] is False and result["log_err"]:
-                st.warning(f"No se pudo registrar en Sheets: {result['log_err']}")
-
-    with map_col:
-        m = Map(location=[ORIGIN_LAT, ORIGIN_LON], zoom_start=12, control_scale=True)
-        add_zone_circles(m, ORIGIN_LAT, ORIGIN_LON)
-        Marker([ORIGIN_LAT, ORIGIN_LON], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
-        Marker([result["dest"][0], result["dest"][1]], tooltip=result["dest"][2], icon=folium.Icon(color="red")).add_to(m)
-        PolyLine(locations=result["coords"], weight=5, opacity=0.8).add_to(m)
-        m.get_root().html.add_child(Element(legend_html()))
-        st_folium(m, width=None, height=600)
-else:
-    with map_col:
-        m = Map(location=[ORIGIN_LAT, ORIGIN_LON], zoom_start=12, control_scale=True)
-        add_zone_circles(m, ORIGIN_LAT, ORIGIN_LON)
-        Marker([ORIGIN_LAT, ORIGIN_LON], tooltip="Almacén (origen)", icon=folium.Icon(color="blue")).add_to(m)
-        m.get_root().html.add_child(Element(legend_html()))
-        st_folium(m, width=None, height=600)
-
-    with info_col:
-        st.info("Introduce un destino en la barra lateral y pulsa **Calcular ruta y precio**.")
+                st.error(
+                    f"No se pudo guardar en la hoja: {result['log_err'].rstrip('.')}. "
+                    "Vuelve a intentarlo; si se repite, avisa a quien mantiene la app."
+                )
+        activa = zona_de(result["distancia_km"])
+        st.markdown(cuadro_zonas_html(activa, fuera=activa is None), unsafe_allow_html=True)
+    else:
+        st.markdown(ficha_vacia_html(), unsafe_allow_html=True)
+        st.markdown(cuadro_zonas_html(), unsafe_allow_html=True)
