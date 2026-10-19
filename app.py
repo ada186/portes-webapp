@@ -12,7 +12,9 @@ import flexpolyline as fp
 from datetime import datetime
 
 st.set_page_config(
-    page_title="Portes · BigMat Rodríguez", page_icon=":material/local_shipping:", layout="wide",
+    page_title="Portes · BigMat Rodríguez",
+    page_icon=str(Path(__file__).parent / "assets" / "favicon.png"),
+    layout="wide",
 )
 
 try:
